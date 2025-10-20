@@ -6,4 +6,17 @@ requests==2.31.0
 # 환경변수 관리
 python-dotenv==1.0.0
 
+# Streamlit 패키지
 streamlit>=1.27.0
+
+# PostgreSQL 패키지
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+
+# 벡터 데이터베이스 및 임베딩
+pgvector==0.2.4
+sentence-transformers==2.2.2
+numpy==1.24.3
+
+# 데이터 처리
+pandas==2.0.3
