@@ -21,6 +21,21 @@ services:
       timeout: 10s
       retries: 3
 
+  # Python 3.12 애플리케이션
+  app:
+    build: .
+    container_name: SKN18-3rd-app
+    ports:
+      - "8501:8501" # Streamlit 기본 포트
+    environment:
+      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/skn_project
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - SKN3rd_network
+    restart: unless-stopped
+
 # 볼륨 정의
 volumes:
   postgres_data:
