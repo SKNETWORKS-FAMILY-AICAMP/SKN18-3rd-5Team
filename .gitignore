@@ -235,4 +235,8 @@ $RECYCLE.BIN/
 # history
 .history 
 
+# Data
+data/xml/*.xml
+data/logs/
+
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
