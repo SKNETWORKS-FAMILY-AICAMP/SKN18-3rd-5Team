@@ -16,7 +16,7 @@ class DartConfig:
     API_KEY = os.getenv('DART_API_KEY', '')
     
     # 실행 선택
-    URL = 'document.xml'        # 'list.json', 'document.xml', 'retry_failed'
+    URL = 'list.json'        # 'list.json', 'document.xml', 'retry_failed'
 
     # 공시 검색 설정 (1년치 고정)
     CORP_CLS = 'Y'              # Y(유가/코스피), K(코스닥), N(코넥스), E(기타)
