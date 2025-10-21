@@ -66,7 +66,7 @@ class DartDownloader:
         
         all_data = []
         seen_rcept_nos = set()
-        today = datetime.now()
+        today = datetime(2025, 10, 20)
         
         # 3개월씩 4번 (총 1년) -> API 3개월씩 다운 가능
         for i in range(4):
@@ -165,7 +165,7 @@ class DartDownloader:
     # JSON 저장
     # ==========================================
     def _save_json(self, all_data):
-        today = datetime.now().strftime('%Y%m%d')
+        today = datetime(2025, 10, 20).strftime('%Y%m%d')
         file_name = f'{today}.json'
         file_path = os.path.join(self.data_dir, file_name)
         
