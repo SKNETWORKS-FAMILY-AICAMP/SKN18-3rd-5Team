@@ -5,7 +5,8 @@ import zipfile
 import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-
+import re 
+from datetime import datetime
 
 # ==========================================
 # 파라미터 설정
@@ -16,7 +17,7 @@ class DartConfig:
     API_KEY = os.getenv('DART_API_KEY', '')
     
     # 실행 선택
-    URL = 'list.json'        # 'list.json', 'document.xml', 'retry_failed'
+    URL = 'document.xml'        # 'list.json', 'document.xml', 'retry_failed'
 
     # 공시 검색 설정 (1년치 고정)
     CORP_CLS = 'Y'              # Y(유가/코스피), K(코스닥), N(코넥스), E(기타)
@@ -223,7 +224,7 @@ class DartDownloader:
         print("전체 ZIP 파일 다운로드")
         print("=" * 60)
         
-        # 제일 최근날짜의 JSON 파일 찾기
+        # 날짜 형식의 JSON 파일 중 가장 최근 파일 찾기
         json_files = [f for f in os.listdir(self.data_dir) 
                      if f.endswith('.json') and not f.startswith('.')]
         
@@ -231,10 +232,23 @@ class DartDownloader:
             print("     ❌ JSON 파일이 없습니다. 먼저 list.json을 실행하세요.")
             return
         
-        json_files.sort()
-        json_file = json_files[-1]
-        file_path = os.path.join(self.data_dir, json_file)
+        # 날짜 형식 파일 필터링 (YYYYMMDD.json)
+        date_files = []
+        for f in json_files:
+            match = re.match(r'^(\d{8})\.json$', f)
+            if match:
+                try:
+                    date_str = match.group(1)
+                    date_obj = datetime.strptime(date_str, '%Y%m%d')
+                    date_files.append((date_obj, f))
+                except ValueError:
+                    continue
         
+        if date_files:
+            # 날짜순 정렬 후 가장 최근 파일 선택
+            date_files.sort(key=lambda x: x[0])
+            json_file = date_files[-1][1]
+        file_path = os.path.join(self.data_dir, json_file)
         print(f"📁 파일: {json_file}")
         
         # JSON 읽기
