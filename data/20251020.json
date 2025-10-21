@@ -1,5 +1,5 @@
 {
-  "total_count": 5091,
+  "total_count": 5103,
   "download_date": "20251020",
   "report_types": [
     "A001",
@@ -1879,6 +1879,141 @@
       "rm": ""
     },
     {
+<<<<<<< HEAD
+=======
+      "corp_code": "00122694",
+      "corp_name": "범양건영",
+      "stock_code": "002410",
+      "corp_cls": "Y",
+      "report_nm": "불성실공시법인지정              ",
+      "rcept_no": "20251020800638",
+      "flr_nm": "유가증권시장본부",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01436628",
+      "corp_name": "이지스레지던스리츠",
+      "stock_code": "350520",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800567",
+      "flr_nm": "이지스레지던스리츠",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01436558",
+      "corp_name": "신한서부티엔디리츠",
+      "stock_code": "404990",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800516",
+      "flr_nm": "신한서부티엔디리츠",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01480780",
+      "corp_name": "NH올원리츠",
+      "stock_code": "400760",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800486",
+      "flr_nm": "NH올원리츠",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01394377",
+      "corp_name": "이지스밸류플러스리츠",
+      "stock_code": "334890",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800474",
+      "flr_nm": "이지스밸류플러스리츠",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01437186",
+      "corp_name": "ESR켄달스퀘어리츠",
+      "stock_code": "365550",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800440",
+      "flr_nm": "ESR켄달스퀘어리츠",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01244601",
+      "corp_name": "카카오페이",
+      "stock_code": "377300",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800412",
+      "flr_nm": "카카오페이",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01244601",
+      "corp_name": "카카오페이",
+      "stock_code": "377300",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800408",
+      "flr_nm": "카카오페이",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "01688896",
+      "corp_name": "삼성FN리츠",
+      "stock_code": "448730",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800362",
+      "flr_nm": "삼성FN리츠",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "00635134",
+      "corp_name": "CJ제일제당",
+      "stock_code": "097950",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800393",
+      "flr_nm": "CJ제일제당",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "00107677",
+      "corp_name": "비비안",
+      "stock_code": "002070",
+      "corp_cls": "Y",
+      "report_nm": "전환가액ㆍ신주인수권행사가액ㆍ교환가액의조정(안내공시)              ",
+      "rcept_no": "20251020800318",
+      "flr_nm": "비비안",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+      "corp_code": "00356370",
+      "corp_name": "LG생활건강",
+      "stock_code": "051900",
+      "corp_cls": "Y",
+      "report_nm": "기업설명회(IR)개최(안내공시)              ",
+      "rcept_no": "20251020800309",
+      "flr_nm": "LG생활건강",
+      "rcept_dt": "20251020",
+      "rm": "유"
+    },
+    {
+>>>>>>> main
       "corp_code": "00137207",
       "corp_name": "유니켐",
       "stock_code": "011330",

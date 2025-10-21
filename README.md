@@ -27,6 +27,3 @@
 uv pip install -r requirements.txt
 streamlit run app.py
 ```
-
-- 코스피 100 기준
-  - 필터링
