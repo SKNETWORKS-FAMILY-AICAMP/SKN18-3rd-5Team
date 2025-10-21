@@ -1,5 +1,5 @@
 import streamlit as st
-from pages.views import render_chat_panel
+from pages.views import render_chat_panel, render_user_level_summary
 from pages.app_bootstrap import render_sidebar, render_page_title, PAGE_INFO  # 필수
 
 # =========================
@@ -12,4 +12,5 @@ render_page_title(PAGE_INFO["P1"], variant="compact")
 # =========================
 # Views
 # =========================
+render_user_level_summary()
 render_chat_panel()
