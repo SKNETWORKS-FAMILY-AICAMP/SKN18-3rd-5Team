@@ -242,5 +242,7 @@ data/docs.jsonl
 data/normalized/*.txt
 data/markdown/*.md
 data/zip/*
+data/kospi_top100.txt
+data/shinhan_research_2025_playwright.csv
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python

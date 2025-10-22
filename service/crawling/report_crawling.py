@@ -13,13 +13,14 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-async def crawl_shinhan_reports():
+async def crawl_shinhan_reports(num: int = 1000):
     base_url = "https://m.shinhansec.com/mweb/invt/shrh/ishrh1001?tabIdx=1"
     results = []
     filter_date = datetime(2025, 1, 1)
-    MAX_CARDS = 10  # 🚧 테스트 시 10개만 (완료되면 1000으로 변경 가능)
+    MAX_CARDS = num  # 🚧 테스트 시 10개만 (완료되면 1000으로 변경 가능)
 
     async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False) # 크롤링 미리보기 켜기
         browser = await p.chromium.launch(headless=True) # 크롤링 미리보기 끄기
         context = await browser.new_context(
             viewport={"width": 430, "height": 932},
@@ -153,4 +154,5 @@ async def crawl_shinhan_reports():
 
 
 if __name__ == "__main__":
-    asyncio.run(crawl_shinhan_reports())
+    reports_num = 10
+    asyncio.run(crawl_shinhan_reports(reports_num))

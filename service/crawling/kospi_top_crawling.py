@@ -45,10 +45,17 @@ def get_kospi_top100_selenium():
     print(f"✅ 코스피 상위 {len(df)}개 기업 불러오기 완료!")
     return df
 
-# 실행
-top100 = get_kospi_top100_selenium()
-print(top100.head(100))
 
-# 저장하기
-output_path = Path(__file__).resolve().parents[2] / "data" / "kospi_top100.txt"
-top100.to_csv(output_path, sep="\t", index=False, encoding="utf-8-sig")
+def do_crawl():
+    # 실행
+    top100 = get_kospi_top100_selenium()
+    print(top100.head(100))
+
+    # 저장하기
+    output_path = Path(__file__).resolve().parents[2] / "data" / "kospi_top100.txt"
+    top100.to_csv(output_path, sep="\t", index=False, encoding="utf-8-sig")
+
+
+if __name__ == "__main__":
+    do_crawl()
+    
