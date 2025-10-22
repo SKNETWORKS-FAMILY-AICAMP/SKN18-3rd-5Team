@@ -23,6 +23,7 @@ if str(APP_ROOT) not in sys.path:
 # ETL
 # =========================
 ETL_STEPS = ("Extract", "Transform", "Load")
+# 파이프라인 표시 이름과 내부 키를 함께 정의한다.
 PIPELINES = (
     ("RAG 구축용 ETL 파이프라인", "rag"),
     ("FineTuning용 ETL 파이프라인", "finetune"),
@@ -61,6 +62,7 @@ def _render_pipeline_controls() -> None:
 
         report_count = None
         if key_prefix == "finetune":
+            # FineTuning Extract에 필요한 매개변수만 옵션 패널로 노출한다.
             with st.container(border=True):
                 st.markdown("**[Extract용 옵션 패널]**")
                 report_count = st.number_input(
@@ -112,6 +114,7 @@ def _handle_step(
     key_prefix: str,
     report_count: int | None = None,
 ) -> bool:
+    # Extract 단계는 파이프라인 유형에 따라 실행 경로가 다르다.
     if step == "Extract":
         if key_prefix == "finetune":
             count = int(report_count) if report_count is not None else 10
@@ -126,6 +129,7 @@ def _handle_step(
 
 def _run_rag_extract(pipeline_label: str) -> bool:
     try:
+        # RAG 용 ETL은 KOSPI 상위 종목 크롤링을 수행한다.
         _log_info(pipeline_label, "KOSPI 상위 종목 데이터를 수집 중입니다...")
         with st.spinner("KOSPI 상위 종목 데이터를 수집 중입니다..."):
             do_crawl()
@@ -138,6 +142,7 @@ def _run_rag_extract(pipeline_label: str) -> bool:
 
 def _run_finetune_extract(pipeline_label: str, report_count: int = 10) -> bool:
     try:
+        # FineTuning 용 ETL은 입력 받은 수만큼 신한 금융 리포트를 수집한다.
         _log_info(pipeline_label, f"금융 리포트 {report_count}건을 수집 중입니다...")
         with st.spinner(f"금융 리포트 {report_count}건을 수집 중입니다..."):
             asyncio.run(crawl_shinhan_reports(report_count))
