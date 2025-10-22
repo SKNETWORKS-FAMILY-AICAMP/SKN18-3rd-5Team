@@ -22,11 +22,14 @@ class DartConfig:
     # 공시 검색 설정 (1년치 고정)
     CORP_CLS = 'Y'              # Y(유가/코스피), K(코스닥), N(코넥스), E(기타)
     
+    # 최종보고서만 검색
+    LAST_REPRT_AT = 'Y'
+
     REPORT_TYPES = [
         'A001',     # 사업보고서 (감사보고서 포함되어 있음)
         'A003',     # 분기보고서
-        'F001',     # 주요사항보고서
-        'I003',     # 자기주식취득결정
+        'B001',     # 주요사항보고서
+        'E001',     # 자기주식취득결정
     ]
     
     # ZIP 다운로드 설정
@@ -128,6 +131,7 @@ class DartDownloader:
                 'end_de': end_date,
                 'page_no': str(page_no),
                 'page_count': '100',
+                'last_reprt_at':DartConfig.LAST_REPRT_AT,
                 'corp_cls': DartConfig.CORP_CLS,
                 'pblntf_detail_ty': report_type
             }
