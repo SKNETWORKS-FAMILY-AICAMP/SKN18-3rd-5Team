@@ -1,1 +1,2 @@
-webdriver-manager==4.0.2
+playwright==1.55.0
+pandas>=1.5.0
