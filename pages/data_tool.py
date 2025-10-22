@@ -112,19 +112,35 @@ def _handle_step(
     key_prefix: str,
     report_count: int | None = None,
 ) -> bool:
-    if key_prefix == "finetune" and step == "Extract":
-        count = int(report_count) if report_count is not None else 10
-        if not _run_finetune_extract(pipeline_label, count):
-            return False
+    if step == "Extract":
+        if key_prefix == "finetune":
+            count = int(report_count) if report_count is not None else 10
+            if not _run_finetune_extract(pipeline_label, count):
+                return False
+        elif key_prefix == "rag":
+            if not _run_rag_extract(pipeline_label):
+                return False
     _log_step(step, pipeline_label)
+    return True
+
+
+def _run_rag_extract(pipeline_label: str) -> bool:
+    try:
+        _log_info(pipeline_label, "KOSPI 상위 종목 데이터를 수집 중입니다...")
+        with st.spinner("KOSPI 상위 종목 데이터를 수집 중입니다..."):
+            do_crawl()
+    except Exception as exc:  # noqa: BLE001
+        _log_error("Extract", pipeline_label, exc)
+        st.error(f"RAG Extract 단계 실행 중 오류가 발생했습니다: {exc}")
+        return False
     return True
 
 
 def _run_finetune_extract(pipeline_label: str, report_count: int = 10) -> bool:
     try:
-        with st.spinner(f"금융 리포트 {report_count}건과 KOSPI 상위 종목 데이터를 수집 중입니다..."):
+        _log_info(pipeline_label, f"금융 리포트 {report_count}건을 수집 중입니다...")
+        with st.spinner(f"금융 리포트 {report_count}건을 수집 중입니다..."):
             asyncio.run(crawl_shinhan_reports(report_count))
-            do_crawl()
     except Exception as exc:  # noqa: BLE001
         _log_error("Extract", pipeline_label, exc)
         st.error(f"FineTuning Extract 단계 실행 중 오류가 발생했습니다: {exc}")
@@ -133,10 +149,13 @@ def _run_finetune_extract(pipeline_label: str, report_count: int = 10) -> bool:
 
 
 def _log_step(step: str, pipeline_label: str) -> None:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # st.session_state.etl_logs.append(f"[{timestamp}] [{pipeline_label}] {step} 단계가 완료되었습니다. (샘플)")
-    st.session_state.etl_logs.append(f"[{timestamp}] [{pipeline_label}] {step} 단계가 완료되었습니다.")
+    _log_info(pipeline_label, f"{step} 단계가 완료되었습니다.")
     st.toast(f"{pipeline_label}: {step} 단계 실행 완료!", icon="✅")
+
+
+def _log_info(pipeline_label: str, message: str) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state.etl_logs.append(f"[{timestamp}] [{pipeline_label}] {message}")
 
 
 def _log_error(step: str, pipeline_label: str, error: Exception) -> None:
