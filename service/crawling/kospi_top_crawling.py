@@ -10,6 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager # 동적 크롤링
 import pandas as pd
 from bs4 import BeautifulSoup
 import time
+from pathlib import Path
 
 def get_kospi_top100_selenium():
     options = Options()
@@ -49,4 +50,5 @@ top100 = get_kospi_top100_selenium()
 print(top100.head(100))
 
 # 저장하기
-top100.to_csv("./data/kospi_top100.txt", sep="\t", index=False, encoding="utf-8-sig")
+output_path = Path(__file__).resolve().parents[2] / "data" / "kospi_top100.txt"
+top100.to_csv(output_path, sep="\t", index=False, encoding="utf-8-sig")

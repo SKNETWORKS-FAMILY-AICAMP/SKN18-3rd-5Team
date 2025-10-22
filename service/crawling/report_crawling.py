@@ -11,15 +11,16 @@ import asyncio
 from playwright.async_api import async_playwright
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
 
 async def crawl_shinhan_reports():
     base_url = "https://m.shinhansec.com/mweb/invt/shrh/ishrh1001?tabIdx=1"
     results = []
     filter_date = datetime(2025, 1, 1)
-    MAX_CARDS = 1000  # 🚧 테스트 시 10개만 (완료되면 1000으로 변경 가능)
+    MAX_CARDS = 10  # 🚧 테스트 시 10개만 (완료되면 1000으로 변경 가능)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True) # 크롤링 미리보기 끄기
         context = await browser.new_context(
             viewport={"width": 430, "height": 932},
             user_agent=(
@@ -146,7 +147,8 @@ async def crawl_shinhan_reports():
 
     # 💾 CSV 저장
     df = pd.DataFrame(results)
-    df.to_csv("./data/shinhan_research_2025_playwright.csv", index=False, encoding="utf-8-sig")
+    output_path = Path(__file__).resolve().parents[2] / "data" / "shinhan_research_2025_playwright.csv"
+    df.to_csv(output_path, index=False, encoding="utf-8-sig")
     print(f"\n✅ 총 {len(df)}개 데이터 저장 완료! → shinhan_research_2025_playwright.csv")
 
 
