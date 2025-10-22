@@ -20,6 +20,7 @@ async def crawl_shinhan_reports(num: int = 1000):
     MAX_CARDS = num  # 🚧 테스트 시 10개만 (완료되면 1000으로 변경 가능)
 
     async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False) # 크롤링 미리보기 켜기
         browser = await p.chromium.launch(headless=True) # 크롤링 미리보기 끄기
         context = await browser.new_context(
             viewport={"width": 430, "height": 932},
