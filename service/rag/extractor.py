@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 XML 파일들을 JSONL 형식으로 변환하는 스크립트
-- data/20251017.json의 rcept_no와 XML 파일명 매칭
+- data/20251020.json의 rcept_no와 XML 파일명 매칭
 - CSS 스타일 부분 제거
 - corp_code, corp_name, stock_code를 앞단에 추가
 - 각 XML 파일을 하나의 JSONL 행으로 변환
@@ -275,9 +275,9 @@ def select_latest_xml_files(xml_dir: Path) -> List[Path]:
 # ========================================== 
 def main():
     # 경로 설정 - 스크립트 파일 기준으로 상대 경로
-    script_dir = Path(__file__).parent  # service 폴더
-    data_dir = script_dir.parent / "data"  # ../data
-    json_file = data_dir / "20251017.json"
+    script_dir = Path(__file__).parent  # service/rag 폴더
+    data_dir = script_dir.parent.parent / "data"  # service/rag -> service -> project root -> data
+    json_file = data_dir / "20251020.json"
     xml_dir = data_dir / "xml"
     output_file = data_dir / "docs.jsonl"
     
@@ -301,8 +301,12 @@ def main():
         for xml_file in xml_files:
             print(f"처리 중: {xml_file.name}")
             
-            # 파일명에서 rcept_no 추출 (확장자 제거)
-            rcept_no = xml_file.stem
+            # 파일명에서 rcept_no 추출 (확장자 및 _숫자 접미사 제거)
+            stem = xml_file.stem
+            if "_" in stem:
+                rcept_no = stem.split("_", 1)[0]  # _숫자 접미사 제거
+            else:
+                rcept_no = stem
             
             # JSON 데이터에서 해당 rcept_no 찾기
             json_info = rcept_data.get(rcept_no, {})

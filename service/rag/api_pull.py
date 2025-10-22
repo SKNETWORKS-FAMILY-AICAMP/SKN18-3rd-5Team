@@ -40,8 +40,11 @@ class DartDownloader:
     def __init__(self):
         self.base_url = 'https://opendart.fss.or.kr/api'
         
-        # 폴더 구조 설정
-        self.data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
+        # 폴더 구조 설정 - service/rag -> service -> project root -> data
+        current_file = os.path.dirname(__file__)  # service/rag
+        service_dir = os.path.dirname(current_file)  # service
+        project_root = os.path.dirname(service_dir)  # project root
+        self.data_dir = os.path.join(project_root, 'data')
         self.zip_dir = os.path.join(self.data_dir, 'zip')
         self.xml_dir = os.path.join(self.data_dir, 'xml')
         self.log_dir = os.path.join(self.data_dir, 'logs')
