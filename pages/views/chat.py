@@ -27,9 +27,9 @@ def render_chat_panel() -> None:
     # 대화창 관리 사이드바를 맨 먼저 렌더링 (상단에 위치)
     _render_chat_sessions_sidebar()
     
-    # 현재 대화창 제목 표시
+    # # 현재 대화창 제목 표시
     current_session = st.session_state.chat_sessions[st.session_state.current_session_id]
-    st.markdown(f"### 💬 {current_session['title']}")
+    # st.markdown(f"### 💬 {current_session['title']}")
     
     # 예상 질문 버튼들 (채팅 히스토리가 초기 상태일 때만 표시)
     current_history = current_session['messages']
@@ -59,7 +59,7 @@ def _render_suggested_questions() -> None:
     for i, question in enumerate(SUGGESTED_QUESTIONS):
         col = cols[i % 2]
         with col:
-            if st.button(question, key=f"suggested_{i}", use_container_width=True):
+            if st.button(question, key=f"suggested_{i}"):
                 _handle_user_input(question)
     
     st.divider()
@@ -81,22 +81,16 @@ def _render_chat_sessions_sidebar() -> None:
     """대화창 관리 사이드바 - 상단에 위치"""
     with st.sidebar:
         # 대화창 관리를 맨 위로 이동
-        st.markdown("### 💬 대화창 관리")
-        
-        # 새 대화 버튼
-        if st.button("➕ 새 대화", use_container_width=True):
-            _create_new_session()
-            st.rerun()
+        st.markdown("## 💬 대화창 관리")
         
         # 기존 대화 목록
         if st.session_state.chat_sessions:
-            st.markdown("**저장된 대화:**")
             for session_id, session in st.session_state.chat_sessions.items():
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
                     if st.button(
-                        f"{'🟢' if session_id == st.session_state.current_session_id else '⚪'} {session['title'][:20]}...",
+                        f"{'🔊' if session_id == st.session_state.current_session_id else ' '} {session['title'][:20]}...",
                         key=f"session_{session_id}",
                         use_container_width=True
                     ):
@@ -107,6 +101,11 @@ def _render_chat_sessions_sidebar() -> None:
                     if st.button("🗑️", key=f"delete_{session_id}", help="대화 삭제"):
                         _delete_session(session_id)
                         st.rerun()
+
+        # 새 대화 버튼
+        if st.button("➕ 새 대화", use_container_width=True):
+            _create_new_session()
+            st.rerun()
         
         # 구분선 추가
         st.markdown("---")

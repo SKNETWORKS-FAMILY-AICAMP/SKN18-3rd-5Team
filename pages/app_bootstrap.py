@@ -60,13 +60,14 @@ def render_sidebar():
     """공통 사이드바"""
     with st.sidebar:
         st.header("투자 Q&A 시스템")
+        st.markdown("투자에 대해 무엇이든 물어보세요!")
         
         # 페이지 네비게이션을 하단으로 이동
         # 대화창 관리는 chat.py에서 직접 렌더링됨
         
         # 하단에 페이지 링크들 배치
         st.markdown("---")
-        st.markdown("### 📍 페이지 이동")
+        st.markdown("# 📍 페이지 이동")
         st.page_link(PAGE_INFO["P0"].link, label=PAGE_INFO["P0"].label, icon=PAGE_INFO["P0"].icon)
         st.page_link(PAGE_INFO["P1"].link, label=PAGE_INFO["P1"].label, icon=PAGE_INFO["P1"].icon)
         # st.page_link(PAGE_INFO["P2"].link, label=PAGE_INFO["P2"].label, icon=PAGE_INFO["P2"].icon)
