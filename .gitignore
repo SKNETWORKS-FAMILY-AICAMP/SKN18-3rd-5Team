@@ -242,5 +242,6 @@ data/docs.jsonl
 data/normalized/*.txt
 data/sections/*.json
 data/parsed/*.json
+data/zip/*
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python

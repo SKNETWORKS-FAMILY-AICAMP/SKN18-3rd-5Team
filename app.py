@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 import streamlit as st
 from pages.app_bootstrap import render_sidebar, render_page_title  # 필수
+from pages.views.user_level import render_user_level
 
 # ---------------------------
 # 기본 설정
@@ -39,18 +40,15 @@ def render_status_overview() -> None:
         st.metric("마지막 학습", value=_format_timestamp(datetime.now()))
     with col3:
         st.metric("평균 응답 정확도", value="92%", delta="+3%")
-    st.progress(0.6, text="재학습 파이프라인 진행률 (예시)")
-    st.caption("실제 값은 백엔드 연동 후 갱신하세요.")
 
-# 나의 투자 수준 선택하기
-def render_user_level():
-    ## 예시 입니다 -> 수정
-    st.subheader("투자지식수준설문영역")
 
 # 실행
 def _render():
+    # 시스템 정보
     render_top()
+    # 시스템 상황판
     render_status_overview()
+    # 사용자 투자 지식 수준 판별
     render_user_level()
 
     st.write("---")
