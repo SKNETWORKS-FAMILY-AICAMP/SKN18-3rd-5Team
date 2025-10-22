@@ -239,5 +239,6 @@ $RECYCLE.BIN/
 data/xml/*.xml
 data/logs/
 data/docs.jsonl
+data/zip/*
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
