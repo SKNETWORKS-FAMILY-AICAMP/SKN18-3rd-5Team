@@ -17,6 +17,11 @@
 ├── data/                  # 분석·시각화에 사용하는 원천 데이터
 ├── assets/                # 이미지, 아이콘 등 정적 리소스
 ├── config/                # 환경 설정 파일 (예: YAML, JSON)
+├── graph/                 # lang-graph
+│   ├── state.py                  # 상태 스키마(QAState)
+│   ├── app_graph.py              # 그래프 구성/compile/팩토리 함수
+│   ├── nodes/                    # LangGraph 노드들
+│   └── utils/
 ├── requirements.txt       # Python 의존성 목록
 └── README.md
 ```
