@@ -74,7 +74,7 @@ chunk_data = pd.DataFrame([
     for doc in docs_with_splitter
 ])
 
-output_path = Path("./data/chunk_data.csv") # 저장할 파일 위치 설정
+output_path = Path("./data/chunked_data.csv") # 저장할 파일 위치 설정
 chunk_data.to_csv(output_path, index=False, encoding="utf-8-sig") # csv로 저장
 
 logging.info(f"청크된 데이터를 저장하였습니다. 저장경로: {output_path}")
