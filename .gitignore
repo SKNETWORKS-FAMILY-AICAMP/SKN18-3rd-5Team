@@ -239,6 +239,8 @@ $RECYCLE.BIN/
 data/xml/*.xml
 data/logs/
 data/docs.jsonl
+data/normalized/*.txt
+data/markdown/*.md
 data/zip/*
 data/kospi_top100.txt
 data/shinhan_research_2025_playwright.csv
