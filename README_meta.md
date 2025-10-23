@@ -77,4 +77,287 @@ API (XML)
 
 ### 1. Llama Factory
 - 참고 : [SK Tech 블로그](https://devocean.sk.com/blog/techBoardDetail.do?ID=166098)
-  
+
+#### 설치
+
+1. runpod (도커 필요 없음)
+   - SSH 설정
+        ```bash
+        $ ssh-keygen -t ed25519 -C "runpod"
+        $ vi ~/.ssh/id_ed25519.pub
+        ```
+     - 노트북에서 ssh 키 생성 후 복사
+     - runpod 메뉴 > settings > **SSH Public Keys** > 복사 붙여넣기
+   - 인스턴스 스펙 선택(가격 확인) : **L4 24G**
+     - 소규모 : L4 24G
+     - 미세튜닝: L4 24G or 4090 24G
+     - 본격 학습 / 대형 모델 : A100 80GB(SXM/PCIE) 또는 H100
+   - Disk 세팅 : **Container (30) / Volume (200)**
+     - 소규모 : Container (20~30) / Volume (50~100)
+     - 8K 컨텍스트 / 데이터셋 포함 학습 : Container (40) / Volume (200~300 이상)
+     - HuggingFace 캐시 / 모델 여러 개 / 결과 백업 : Container (40) / Volume (300 ~ 1T)
+   - Volume Mount Path: **/workspace**
+   - Port 설정: **7860** (LLaMA-Factory 기본 WebUI 포트)
+   - GPU Count : **1**
+   - Encrypt Volume X / **SSH Terminal Access O** / Start Jupyter Notebook X
+2. SSH 접속
+   - **로컬** 터미널 이용할 경우 : Pods Detail > [**SSH over exposed TCP**] 커멘드 복사 후 실행
+   - **웹** 터미널 이용 : [**Enable Web Terminal**] 스위치 ON > Web Terminal 접속
+3. 라마 팩토리 설치
+   - 설치
+        ```bash
+        cd /workspace
+        git clone https://github.com/hiyouga/LLaMA-Factory.git
+        cd LLaMA-Factory
+
+        # 가상 환경 활성화 (런팟 재시동 하면 pip install 목록 사라짐)
+        python -m venv .venv
+        source .venv/bin/activate
+        python -V; which python
+
+        pip install -r requirements.txt
+        pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+        pip install --no-deps xformers
+        pip install -e .[metrics,bitsandbytes,qwen]
+        ```
+    - 웹 접속 확인
+        ```bash
+        python src/webui.py --server_name 0.0.0.0 --port 7860 --share
+        ```
+    - 에러 날 경우 (옵션)
+        - 웹 접속 커맨드 실행하면서 확인
+        ```bash
+        cd /workspace/LLaMA-Factory
+        # 기본 업그레이드
+        pip install -U pip setuptools wheel
+
+        # 프로젝트 요구사항
+        pip install -r requirements.txt
+
+        # Unsloth + xformers (이미 설치했다면 건너뛰어도 OK)
+        pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+        pip install --no-deps xformers
+
+        # LLaMA-Factory 자체 설치(개발모드) + extras
+        pip install -e .[metrics,bitsandbytes,qwen]
+
+        # 1) 충돌 제거
+        pip uninstall -y unsloth-zoo datasets
+
+        # 2) LLaMA-Factory가 요구하는 범위로 고정 (4.0.0)
+        pip install "datasets==4.0.0"
+        ```
+        -
+    - 환경 체크 (옵션)
+        ```bash
+        python - << 'PY'
+        import sys, torch
+        import transformers, accelerate, peft
+        import datasets
+        print("python:", sys.executable)
+        print("transformers:", transformers.__version__)
+        print("accelerate:", accelerate.__version__)
+        print("peft:", peft.__version__)
+        print("cuda available:", torch.cuda.is_available())
+        print("datasets:", datasets.__version__)
+        PY
+        ```
+
+4. 로컬 데이터셋 복사
+   - 로컬 터미널 창으로 접속
+        ```bash
+        # 형식
+        scp -P <포트번호> -i ~/.ssh/id_ed25519 {파일명} root@<RunPod_IP>:/workspace/LLaMA-Factory/data/
+        # 예시
+        scp -P 11969 -i ~/.ssh/id_ed25519 clean_datajson root@66.92.198.178:/workspace/LLaMA-Factory/data/
+        ```
+    - 런팟 터미널 확인
+        ```bash
+        ls -l /workspace/LLaMA-Factory/data
+        ```
+5. 데이터셋 이름 등록
+    - dataset_info.json 에 등록해야 쓸 수 있음
+        ```bash
+        # 현재 위치 /workspace/LLaMa-Factory
+        pwd
+        vi data/dataset_info.json
+        ```
+    - 다음을 붙여 넣기
+        ```json
+        "ko_civil_service_inst": {
+            "file_name": "ko_civil_service.inst.json",
+            "formatting": "alpaca", 
+            "columns": {
+                "prompt": "instruction",
+                "response": "output",
+                "history": "input"
+            }
+        },
+        ```
+
+6. Config 추가
+   - 파인튜닝 옵션 Config 파일 추가
+     - 파일명 : 
+        ```bash
+        # 에디터 실행
+        vi {튜닝옵션으로파일명}.yaml
+        # 예시
+        vi llama-3-8b-Instruct-bnb-4bit-lora-ko.yaml
+        ```
+     - 파일 내용 작성 or 붙여넣기
+       - 저장 명령어 : `:wq`
+        ```yaml
+        model_name_or_path: unsloth/llama-3-8b-Instruct-bnb-4bit
+        quantization_bit: 4
+        use_unsloth: true
+
+        stage: sft
+        do_train: true
+        flash_attn: auto
+        #use_unsloth: true
+        finetuning_type: lora
+        lora_target: all
+        lora_rank: 8
+        lora_alpha: 16
+        lora_dropout: 0.05
+
+
+        dataset_dir: data
+        dataset: ko_civil_service_inst
+        template: llama3
+        cutoff_len: 1024
+
+        preprocessing_num_workers: 8
+
+        output_dir: output/llama-3-8b-Instruct-bnb-4bit/qlora
+        #logging_steps: 10
+        #save_steps: 500
+        plot_loss: true
+        overwrite_output_dir: true
+
+        per_device_train_batch_size: 1
+        gradient_accumulation_steps: 4
+        learning_rate: 1.0e-4
+        num_train_epochs: 3.0
+        lr_scheduler_type: cosine
+        warmup_ratio: 0.1
+        bf16: true
+        #report_to: none
+
+        seed: 42
+        val_size: 0.1
+        per_device_eval_batch_size: 1
+        eval_strategy: steps
+        eval_steps: 100
+
+
+        do_eval: true
+        #eval_strategy: steps
+        #eval_steps: 100
+        save_strategy: steps
+        save_steps: 100
+        logging_steps: 20
+
+        load_best_model_at_end: true
+        metric_for_best_model: "eval_loss"
+        greater_is_better: false
+
+        report_to: ["tensorboard"]
+        resize_vocab: true
+        upcast_layernorm: true
+        ```
+
+7. 학습 시작
+   - CLI
+        ```bash
+        # 내 경로 확인
+        pwd
+
+        # (선택) 캐시 경로 고정해두면 재사용에 좋아요
+        export HF_HOME=/workspace/.cache/huggingface
+
+        # 학습 시작
+        python -m llamafactory-cli train config/llama3-8b-instruct-bnb-4bit-unsloth.yaml
+        ```
+    - Config 추천 설정
+        ```yaml
+        #.yaml 파일
+        # 평가/저장/로깅 전략
+        do_eval: true
+        eval_strategy: steps           # 또는 "epoch"
+        eval_steps: 100                # 데이터/스텝 규모에 맞게
+        save_strategy: steps
+        save_steps: 100
+        logging_steps: 20
+
+        # 베스트 모델 저장
+        load_best_model_at_end: true
+        metric_for_best_model: "eval_loss"
+        greater_is_better: false
+
+        # 로깅 백엔드(선택)
+        report_to: ["tensorboard"]     # 또는 ["wandb"] 사용 시 WANDB_API_KEY 필요
+
+        # 토크나이저 경고 대응
+        resize_vocab: true
+
+        #(권장) 4bit 학습 안정화
+        upcast_layernorm: true
+        ```
+    - Output 확인
+        ```python
+        # 커맨드
+        ls -al {config에 지정한 ouput_dir}
+        # 예시
+        ls -al /output/llama-3-8b-Instruct-bnb-4bit/qlora
+        ```
+
+8. 추론
+    ```bash
+    # 인자 설정
+    llamafactory-cli chat \
+    --model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit" \
+    --adapter_name_or_path="output/llama-3-8b-Instruct-bnb-4bit/qlora" \
+    --template="llama3" \
+    --finetuning_type="lora" \
+    --quantization_bit=4 \
+    --temperature=0
+
+    # 테스트 후 히스토리 제거
+    clear
+
+    # 챗 종료
+    exit
+    ```
+
+9. 모델 저장
+   - 학습된 Lora adapter를 base 모델과 합쳐 저장
+   - 저장 파라미터
+     - model_name_or_path : base 모델을 지정, 학습 효율화를 위해 사용했던 양자화 모델이 아닌 원래 모델을 지정
+     - adapter_name_or_path: Lora adapter가 저장된 위치
+     - template : 모델의 형식
+     - finetuning_type: 파인튜닝 방법
+     - export_dir: 병합된 모델이 저장될 위치
+     - export_size: 모델의 큰 경우 분할될 크기 (GB)
+     - export_device: 모델 병합을 처리할 디바이스 지정 (cpu and cuda)
+     - export_hub_model_id : huggingface에 업로드 할 경우 아이디
+    - CLI
+        ```bash
+        # llama3 모델을 다운로드 해야하기 때문에 라이센스 동의
+        huggingface-cli login
+
+        # Lora Adapter를 병합
+        llamafactory-cli export \
+        --model_name_or_path="meta-llama/Meta-Llama-3-8B-Instruct" \
+        --adapter_name_or_path="output/llama-3-8b-Instruct-bnb-4bit/qlora" \
+        --template="llama3" \
+        --finetuning_type="lora" \
+        --export_dir="/output/Meta-Llama-3-8B-Instruct" \
+        --export_size=2 \
+        --export_device="cpu"
+
+        # 분할 저장 확인
+        ls -al output/Meta-Llama-3-8B-Instruct/
+        ```
+
+
