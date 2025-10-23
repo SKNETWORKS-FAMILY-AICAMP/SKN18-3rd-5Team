@@ -243,5 +243,6 @@ data/zip/*
 data/kospi_top100.txt
 data/shinhan_research_2025_playwright.csv
 data/clean_data.csv
+data/chunked_data.csv
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
