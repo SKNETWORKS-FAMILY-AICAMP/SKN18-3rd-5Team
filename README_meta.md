@@ -314,9 +314,6 @@ API (XML)
 
 8. 추론
     ```bash
-    # 챗 모드
-    llamafactory-cli chat -h
-
     # 인자 설정
     llamafactory-cli chat \
     --model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit" \
