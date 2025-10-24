@@ -5,9 +5,9 @@ Transform Pipeline - Step 3: 스마트 청킹 및 메타데이터 강화
 ====================================================================================
 
 [파이프라인 순서]
-1. structured.py      → 마크다운을 구조화된 청크로 변환
-2. data_normalizer.py → 데이터 정규화 및 자연어 품질 개선
-3. chunker.py         → 스마트 청킹 및 메타데이터 강화 (현재 파일)
+1. parser.py      → 마크다운을 구조화된 청크로 변환
+2. normalizer.py  → 데이터 정규화 및 자연어 품질 개선
+3. chunker.py     → 스마트 청킹 및 메타데이터 강화 (현재 파일)
 
 [이 파일의 역할]
 - 작은 청크들을 의미 단위로 병합
@@ -28,16 +28,34 @@ Transform Pipeline - Step 3: 스마트 청킹 및 메타데이터 강화
 """
 
 import re
+import math
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
+from pathlib import Path
 import tiktoken
+
+# 공통 모듈
+from utils import read_jsonl, write_jsonl, get_file_list, ensure_output_dir, get_transform_paths
+
+# LangChain text splitter (optional)
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    try:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+        LANGCHAIN_AVAILABLE = True
+    except ImportError:
+        LANGCHAIN_AVAILABLE = False
+        RecursiveCharacterTextSplitter = None
+        print("⚠️  LangChain not available. Text chunks will not be split further.")
 
 
 @dataclass
 class ChunkConfig:
     """청킹 설정"""
     # 최대 토큰 수 (OpenAI embedding 기준)
-    max_tokens: int = 8000  # 여유있게 설정
+    max_tokens: int = 7000  # 안전한 제한 (8192 - 여유분)
     
     # 청크 오버랩 (문맥 보존)
     overlap_tokens: int = 200
@@ -61,6 +79,122 @@ class SmartChunker:
         except:
             # fallback
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
+    
+    def split_text_chunk(self, chunk: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """text 타입 청크를 LangChain splitter로 분할
+        
+        normalizer.py에서 이동: 텍스트 분할은 chunker.py의 책임
+        
+        적응형 chunk_size 사용: max(300, min(1000, ceil(total_length // 30)))
+        """
+        if not LANGCHAIN_AVAILABLE:
+            return [chunk]
+        
+        text = chunk.get('natural_text', '')
+        if not text or len(text) < 200:
+            # 짧은 텍스트는 분할하지 않음
+            return [chunk]
+
+        # 적응형 chunk_size 계산
+        total_length = len(text)
+        chunk_size = max(300, min(1000, math.ceil(total_length / 30)))
+        chunk_overlap = min(50, chunk_size // 5)
+
+        # LangChain splitter 생성
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            length_function=len,
+            is_separator_regex=False,
+        )
+
+        # 텍스트 분할
+        split_texts = text_splitter.split_text(text)
+
+        # 분할된 텍스트로 chunk 생성
+        result_chunks = []
+        base_chunk_id = chunk.get('chunk_id', '')
+
+        for idx, split_text in enumerate(split_texts):
+            new_chunk = chunk.copy()
+            new_chunk['natural_text'] = split_text
+            # chunk_id에 분할 인덱스 추가
+            if '_split_' in base_chunk_id:
+                # 이미 분할된 경우 새로운 인덱스로 교체
+                new_chunk['chunk_id'] = re.sub(r'_split_\d+$', f'_split_{idx}', base_chunk_id)
+            else:
+                new_chunk['chunk_id'] = f"{base_chunk_id}_split_{idx}"
+
+            # metadata에 분할 정보 추가
+            if 'metadata' not in new_chunk:
+                new_chunk['metadata'] = {}
+            new_chunk['metadata']['split_index'] = idx
+            new_chunk['metadata']['total_splits'] = len(split_texts)
+            new_chunk['metadata']['chunk_size'] = chunk_size
+
+            result_chunks.append(new_chunk)
+
+        return result_chunks
+    
+    def split_table_row_chunk(self, chunk: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """table_row 타입 청크를 적응형 크기로 분할
+        
+        적응형 chunk_size 사용: max(300, min(1000, ceil(total_length // 30)))
+        """
+        text = chunk.get('natural_text', '')
+        if not text or len(text) < 300:
+            # 짧은 테이블은 분할하지 않음
+            return [chunk]
+
+        # 적응형 chunk_size 계산
+        total_length = len(text)
+        chunk_size = max(300, min(1000, math.ceil(total_length / 30)))
+        
+        # 텍스트를 청크 크기로 분할
+        split_texts = []
+        start = 0
+        
+        while start < total_length:
+            end = start + chunk_size
+            
+            # 문장 경계에서 자르기 (콤마, 세미콜론, 마침표)
+            if end < total_length:
+                # 뒤에서부터 문장 구분자 찾기
+                for i in range(min(100, chunk_size // 2), 0, -1):
+                    if start + i < total_length and text[start + i] in [',', ';', '.', ' ']:
+                        end = start + i + 1
+                        break
+            
+            split_text = text[start:end].strip()
+            if split_text:
+                split_texts.append(split_text)
+            
+            start = end
+
+        # 분할된 텍스트로 chunk 생성
+        result_chunks = []
+        base_chunk_id = chunk.get('chunk_id', '')
+
+        for idx, split_text in enumerate(split_texts):
+            new_chunk = chunk.copy()
+            new_chunk['natural_text'] = split_text
+            
+            # chunk_id에 분할 인덱스 추가
+            if '_split_' in base_chunk_id:
+                new_chunk['chunk_id'] = re.sub(r'_split_\d+$', f'_split_{idx}', base_chunk_id)
+            else:
+                new_chunk['chunk_id'] = f"{base_chunk_id}_split_{idx}"
+
+            # metadata에 분할 정보 추가
+            if 'metadata' not in new_chunk:
+                new_chunk['metadata'] = {}
+            new_chunk['metadata']['split_index'] = idx
+            new_chunk['metadata']['total_splits'] = len(split_texts)
+            new_chunk['metadata']['chunk_size'] = chunk_size
+
+            result_chunks.append(new_chunk)
+
+        return result_chunks
     
     def should_merge_chunks(self, chunks: List[Dict]) -> List[Dict]:
         """
@@ -285,9 +419,21 @@ def process_chunks_with_enhancement(chunks: List[Dict]) -> List[Dict]:
     
     chunker = SmartChunker()
     
+    # 0. 청크 분할 (text: LangChain splitter, table_row: 적응형 분할)
+    split_chunks = []
+    for chunk in chunks:
+        if chunk.get('chunk_type') == 'text':
+            split_chunks.extend(chunker.split_text_chunk(chunk))
+        elif chunk.get('chunk_type') == 'table_row':
+            split_chunks.extend(chunker.split_table_row_chunk(chunk))
+        else:
+            split_chunks.append(chunk)
+    
+    print(f"✅ 청크 분할 (text/table_row): {len(chunks)} → {len(split_chunks)}")
+    
     # 1. 작은 청크 병합
-    merged = chunker.should_merge_chunks(chunks)
-    print(f"✅ 청크 병합: {len(chunks)} → {len(merged)}")
+    merged = chunker.should_merge_chunks(split_chunks)
+    print(f"✅ 청크 병합: {len(split_chunks)} → {len(merged)}")
     
     # 2. 문맥 윈도우 추가
     with_context = chunker.add_context_window(merged)
@@ -295,31 +441,81 @@ def process_chunks_with_enhancement(chunks: List[Dict]) -> List[Dict]:
     # 3. 메타데이터 강화
     enhanced = [chunker.enhance_metadata(chunk) for chunk in with_context]
     
-    return enhanced
+    # 4. 큰 청크 추가 분할 (7000 토큰 이상)
+    final_chunks = []
+    oversized_count = 0
+    split_count = 0
+    
+    for chunk in enhanced:
+        token_count = chunk['metadata'].get('token_count', 0)
+        if token_count > 7000:
+            oversized_count += 1
+            text = chunk['natural_text']
+            
+            # 목표: 3500 토큰씩 분할 (안전 마진 포함)
+            # 한글 기준: 1토큰 ≈ 1.1자 → 3500토큰 ≈ 3850자
+            target_chars = 3850
+            num_parts = math.ceil(len(text) / target_chars)
+            part_size = len(text) // num_parts
+            
+            if num_parts > 1:
+                split_count += 1
+                for idx in range(num_parts):
+                    start = idx * part_size
+                    end = start + part_size if idx < num_parts - 1 else len(text)
+                    
+                    # 문장 경계에서 자르기 (콤마, 공백, 줄바꿈)
+                    if end < len(text):
+                        for i in range(min(300, part_size // 3), 0, -1):
+                            pos = start + i
+                            if pos < len(text) and text[pos] in [',', ' ', '\n', '.', ':']:
+                                end = pos + 1
+                                break
+                    
+                    part_text = text[start:end].strip()
+                    if not part_text:
+                        continue
+                    
+                    new_chunk = chunk.copy()
+                    new_chunk['natural_text'] = part_text
+                    new_chunk['chunk_id'] = f"{chunk['chunk_id']}_oversized_{idx}"
+                    new_chunk['metadata'] = chunk['metadata'].copy()
+                    new_chunk['metadata']['oversized_split'] = True
+                    new_chunk['metadata']['oversized_index'] = idx
+                    new_chunk['metadata']['oversized_total'] = num_parts
+                    new_chunk['metadata']['token_count'] = chunker._count_tokens(part_text)
+                    
+                    final_chunks.append(new_chunk)
+            else:
+                # 분할이 필요하지 않은 경우 (텍스트가 짧음)
+                final_chunks.append(chunk)
+        else:
+            final_chunks.append(chunk)
+    
+    if oversized_count > 0:
+        print(f"✅ 큰 청크 발견: {oversized_count}개 (7000+ 토큰)")
+        if split_count > 0:
+            print(f"✅ 큰 청크 분할: {split_count}개 청크 → 평균 3500 토큰으로 분할")
+    
+    return final_chunks
 
 
-def process_jsonl_file(input_file: str, output_file: str):
+def process_jsonl_file(input_file: Path, output_file: Path):
     """
     Step 3: JSONL 파일 스마트 청킹
     
     입력: step2_normalized의 JSONL 파일
     출력: final의 JSONL 파일
     """
-    import json
     
     # 모든 청크 읽기
-    chunks = []
-    with open(input_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            chunks.append(json.loads(line))
+    chunks = list(read_jsonl(input_file))
     
     # 스마트 청킹 적용
     enhanced_chunks = process_chunks_with_enhancement(chunks)
     
     # 저장
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for chunk in enhanced_chunks:
-            f.write(json.dumps(chunk, ensure_ascii=False) + '\n')
+    write_jsonl(output_file, enhanced_chunks)
     
     print(f"✅ {len(enhanced_chunks)}개 청크 처리 완료")
     
@@ -330,20 +526,17 @@ def process_jsonl_file(input_file: str, output_file: str):
     print(f"  📊 최대 토큰 수: {max(token_counts)}")
 
 
-def process_directory(input_dir: str, output_dir: str):
+def process_directory(input_dir: Path, output_dir: Path):
     """
     Step 3: 디렉토리 내 모든 JSONL 파일 스마트 청킹
     
     입력: data/transform/normalized/
     출력: data/transform/final/
     """
-    from pathlib import Path
     
-    input_path = Path(input_dir)
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    ensure_output_dir(output_dir)
     
-    jsonl_files = list(input_path.glob("*_chunks.jsonl"))
+    jsonl_files = get_file_list(input_dir)
     
     if not jsonl_files:
         print("❌ JSONL 파일이 없습니다.")
@@ -352,10 +545,11 @@ def process_directory(input_dir: str, output_dir: str):
     print("=" * 80)
     print("Transform Pipeline - Step 3: 스마트 청킹 및 메타데이터 강화")
     print("=" * 80)
-    print(f"📁 입력: {input_path}")
-    print(f"📁 출력: {output_path}")
+    print(f"📁 입력: {input_dir}")
+    print(f"📁 출력: {output_dir}")
     print(f"📄 처리할 파일 수: {len(jsonl_files)}개")
-    print(f"\n다음 단계: 벡터 DB에 임베딩 및 저장")
+    print(f"\n처리 내용: 텍스트 분할, 청크 병합, 문맥 윈도우 추가, 메타데이터 강화")
+    print(f"다음 단계: 벡터 DB에 임베딩 및 저장")
     print("=" * 80)
     print()
     
@@ -366,16 +560,14 @@ def process_directory(input_dir: str, output_dir: str):
         print(f"[{i}/{len(jsonl_files)}] 처리 중: {input_file.name}")
         
         # 입력 청크 수 카운트
-        with open(input_file, 'r', encoding='utf-8') as f:
-            input_count = sum(1 for _ in f)
+        input_count = sum(1 for _ in read_jsonl(input_file))
         total_input += input_count
         
-        output_file = output_path / input_file.name
-        process_jsonl_file(str(input_file), str(output_file))
+        output_file = output_dir / input_file.name
+        process_jsonl_file(input_file, output_file)
         
         # 출력 청크 수 카운트
-        with open(output_file, 'r', encoding='utf-8') as f:
-            output_count = sum(1 for _ in f)
+        output_count = sum(1 for _ in read_jsonl(output_file))
         total_output += output_count
         
         print(f"  💾 저장: {output_file.name}")
@@ -385,29 +577,31 @@ def process_directory(input_dir: str, output_dir: str):
     print("Step 3 완료!")
     print("=" * 80)
     print(f"총 처리: {total_input}개 → {total_output}개 청크")
-    if total_input > total_output:
-        reduction = (1 - total_output/total_input) * 100
-        print(f"병합 효과: {reduction:.1f}% 감소")
+    if total_input != total_output:
+        change_ratio = ((total_output - total_input) / total_input) * 100
+        if change_ratio > 0:
+            print(f"분할/병합 효과: {change_ratio:+.1f}% 변화")
+        else:
+            print(f"병합 효과: {abs(change_ratio):.1f}% 감소")
 
 
-if __name__ == "__main__":
+def main():
+    """Chunker 메인 함수"""
     import sys
-    from pathlib import Path
     
     # 디렉토리 모드 (권장)
     if len(sys.argv) == 1:
         # 기본 경로 사용
-        script_dir = Path(__file__).parent
-        data_dir = script_dir.parent.parent.parent / "data"
-        input_dir = data_dir / "transform" / "normalized"
-        output_dir = data_dir / "transform" / "final"
+        paths = get_transform_paths(__file__)
+        input_dir = paths['normalized_dir']
+        output_dir = paths['final_dir']
         
-        process_directory(str(input_dir), str(output_dir))
+        process_directory(input_dir, output_dir)
     
     # 단일 파일 모드
     elif len(sys.argv) == 3:
-        input_file = sys.argv[1]
-        output_file = sys.argv[2]
+        input_file = Path(sys.argv[1])
+        output_file = Path(sys.argv[2])
         process_jsonl_file(input_file, output_file)
     
     # 테스트 모드
@@ -441,3 +635,7 @@ if __name__ == "__main__":
         print("  2. 단일 파일 모드:      python chunker.py <input.jsonl> <output.jsonl>")
         print("  3. 테스트 모드:         python chunker.py --test")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

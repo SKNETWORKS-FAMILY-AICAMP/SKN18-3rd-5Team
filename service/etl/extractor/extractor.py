@@ -514,8 +514,11 @@ def convert_xml_to_markdown(
 
 def main():
     # 경로 설정
-    script_dir = Path(__file__).parent
-    data_dir = script_dir.parent.parent / "data"
+    script_dir = Path(__file__).parent  # service/etl/extractor
+    # etl_dir = script_dir.parent  # service/etl
+    # service_dir = etl_dir.parent  # service
+    project_root = script_dir.parent.parent.parent  # project root
+    data_dir = project_root / "data"
     json_file = data_dir / "20251020.json"
     xml_dir = data_dir / "xml"
     output_dir = data_dir / "markdown"

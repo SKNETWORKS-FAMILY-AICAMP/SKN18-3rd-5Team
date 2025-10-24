@@ -5,9 +5,9 @@ Transform Pipeline - Step 2: 데이터 정규화 및 자연어 품질 개선
 ====================================================================================
 
 [파이프라인 순서]
-1. structured.py      → 마크다운을 구조화된 청크로 변환
-2. data_normalizer.py → 데이터 정규화 및 자연어 품질 개선 (현재 파일)
-3. chunker.py         → 스마트 청킹 및 메타데이터 강화
+1. parser.py      → 마크다운을 구조화된 청크로 변환
+2. normalizer.py  → 데이터 정규화 및 자연어 품질 개선 (현재 파일)
+3. chunker.py     → 스마트 청킹 및 메타데이터 강화
 
 [이 파일의 역할]
 - 날짜 형식 통일 (YYYY-MM-DD)
@@ -17,7 +17,7 @@ Transform Pipeline - Step 2: 데이터 정규화 및 자연어 품질 개선
 - 자연어 품질 개선 (반복 축소, 문맥 추가)
 
 [입력]
-- data/transform/structured/*_chunks.jsonl (structured.py 출력)
+- data/transform/parser/*_chunks.jsonl (parser.py 출력)
 
 [출력]
 - data/transform/normalized/*_chunks.jsonl (정규화된 청크)
@@ -25,24 +25,14 @@ Transform Pipeline - Step 2: 데이터 정규화 및 자연어 품질 개선
 """
 
 import re
-import json
-import math
-from datetime import datetime
-from typing import Dict, Any, List, Optional, Union
-from dataclasses import dataclass
 import unicodedata
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass
+from pathlib import Path
 
-try:
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-    LANGCHAIN_AVAILABLE = True
-except ImportError:
-    try:
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
-        LANGCHAIN_AVAILABLE = True
-    except ImportError:
-        LANGCHAIN_AVAILABLE = False
-        RecursiveCharacterTextSplitter = None
-        print("⚠️  LangChain not available. Text chunks will not be split further.")
+# 공통 모듈
+from utils import read_jsonl, write_jsonl, get_file_list, ensure_output_dir, get_transform_paths
 
 
 @dataclass
@@ -60,13 +50,26 @@ class NormalizationConfig:
     def __post_init__(self):
         if self.remove_patterns is None:
             self.remove_patterns = [
-                r'\*\*목\s+차\*\*.*?(?=\n\n|\Z)',  # 목차 (마크다운)
+                # 목차 관련 패턴들
+                r'\*\*목\s*차\*\*.*?(?=\n\n|\Z)',  # **목 차** 패턴
+                r'목\s*차.*?(?=\n\n|\Z)',  # 목차로 시작하는 모든 내용
+                r'페\s*이\s*지.*?(?=\n\n|\Z)',  # 페이지 관련 내용
+                r'독립된\s*감사인의\s*감사보고서.*?\d+\s*~\s*\d+',  # 감사보고서 목차
+                r'연\s*결\s*재\s*무\s*제\s*표.*?\d+',  # 재무제표 목차
+                r'연\s+결\s+재\s+무\s+제\s+표\s+에\s+대\s+한',  # "연 결 재 무 제 표 에 대 한" 패턴
+                r'ㆍ\s*연\s*결.*?\d+\s*~\s*\d+',  # 연결 관련 목차
+                r'ㆍ',  # 단독 ㆍ 문자 제거
+                r'외부감사\s*실시내용.*?\d+\s*~\s*\d+',  # 외부감사 목차
+                r'주석.*?\d+\s*~\s*\d+',  # 주석 목차
                 r'I+\.\s+[가-힣\s]+‥+\s*\d+',  # 로마 숫자 목차
                 r'제\s*\d+\s*\([전당]*\)\s*기',  # 중복 기수 표시
                 # 상세한 목차 패턴
                 r'【[^】]*】\s*-+\s*\d+',  # 【 제목 】 -------- 페이지번호
                 # 목차 블록 전체 제거 (로마숫자/아라비아숫자 + 제목 + 점선 + 페이지번호)
                 r'(?:^|\n)(?:[IVX]+\.|[0-9\-\.]+)\s+[가-힣\s\(\)]+\s+-+\s*\d+(?:\n[IVX0-9\-\.]+\s+[가-힣\s\(\)]+\s+-+\s*\d+)*',
+                # 점선 패턴
+                r'-{3,}.*?(?=\n\n|\Z)',  # 3개 이상의 점선
+                r'‥+.*?(?=\n\n|\Z)',  # 점선 패턴
             ]
 
 
@@ -76,11 +79,11 @@ class DataNormalizer:
     def __init__(self, config: NormalizationConfig = None):
         self.config = config or NormalizationConfig()
     
-    def normalize_chunk(self, chunk: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    def normalize_chunk(self, chunk: Dict[str, Any]) -> Dict[str, Any]:
         """청크 단위 정규화
-
+        
         Returns:
-            단일 chunk 또는 text 타입인 경우 분할된 chunk 리스트
+            정규화된 단일 chunk (텍스트 분할은 chunker.py에서 처리)
         """
 
         # structured_data 정규화 먼저 (natural_text 생성에 사용됨)
@@ -100,7 +103,7 @@ class DataNormalizer:
                 )
                 if not has_financial_data and chunk.get('natural_text'):
                     chunk['structured_data'] = self._reconstruct_structured_from_text(chunk['natural_text'])
-
+        
         # natural_text 개선
         if chunk.get('natural_text'):
             chunk['natural_text'] = self._improve_natural_text(
@@ -110,64 +113,10 @@ class DataNormalizer:
                 chunk.get('metadata', {}),
                 chunk.get('section_path', '')
             )
-
-        # text 타입 청크는 LangChain splitter로 분할
-        if chunk.get('chunk_type') == 'text' and LANGCHAIN_AVAILABLE:
-            return self._split_text_chunk(chunk)
-
+        
         return chunk
-
-    def _split_text_chunk(self, chunk: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """text 타입 청크를 LangChain splitter로 분할
-
-        적응형 chunk_size 사용: max(300, min(1000, ceil(total_length // 30)))
-        """
-        text = chunk.get('natural_text', '')
-        if not text or len(text) < 200:
-            # 짧은 텍스트는 분할하지 않음
-            return [chunk]
-
-        # 적응형 chunk_size 계산
-        total_length = len(text)
-        chunk_size = max(300, min(1000, math.ceil(total_length / 30)))
-        chunk_overlap = min(50, chunk_size // 5)
-
-        # LangChain splitter 생성
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            length_function=len,
-            is_separator_regex=False,
-        )
-
-        # 텍스트 분할
-        split_texts = text_splitter.split_text(text)
-
-        # 분할된 텍스트로 chunk 생성
-        result_chunks = []
-        base_chunk_id = chunk.get('chunk_id', '')
-
-        for idx, split_text in enumerate(split_texts):
-            new_chunk = chunk.copy()
-            new_chunk['natural_text'] = split_text
-            # chunk_id에 분할 인덱스 추가
-            if '_split_' in base_chunk_id:
-                # 이미 분할된 경우 새로운 인덱스로 교체
-                new_chunk['chunk_id'] = re.sub(r'_split_\d+$', f'_split_{idx}', base_chunk_id)
-            else:
-                new_chunk['chunk_id'] = f"{base_chunk_id}_split_{idx}"
-
-            # metadata에 분할 정보 추가
-            if 'metadata' not in new_chunk:
-                new_chunk['metadata'] = {}
-            new_chunk['metadata']['split_index'] = idx
-            new_chunk['metadata']['total_splits'] = len(split_texts)
-            new_chunk['metadata']['chunk_size'] = chunk_size
-
-            result_chunks.append(new_chunk)
-
-        return result_chunks
-
+    
+    
     def _improve_natural_text(
         self, 
         text: str, 
@@ -222,13 +171,16 @@ class DataNormalizer:
         return text
     
     def _improve_table_text(
-        self,
-        text: str,
+        self, 
+        text: str, 
         structured_data: Dict,
         metadata: Dict,
         section_path: str = ""
     ) -> str:
-        """테이블 자연어 개선 - 자연스러운 문장 생성"""
+        """테이블 자연어 개선 - 자연스러운 문장 생성
+        
+        단위는 parser.py에서 이미 적용되어 있음
+        """
 
         section = section_path
 
@@ -239,20 +191,23 @@ class DataNormalizer:
 
         # 2. 반복 제거 및 기본 개선
         text = self._reduce_repetition(text)
-
-        # 3. 재무제표 특화 처리 (공백 제거 후 체크)
-        if any(kw in section.replace(' ', '') for kw in ['재무', '손익', '자산', '재무제표']):
+        
+        # 3. 큰 raw 숫자 처리 (10자리 이상) - 섹션 무관하게 항상 적용
+        text = self._process_large_raw_numbers(text)
+        
+        # 4. 재무제표 특화 처리 (공백 제거 후 체크)
+        if any(kw in section.replace(' ', '') for kw in ['재무', '손익', '자산', '재무제표', '위험관리', '파생거래']):
             text = self._improve_financial_text(text, structured_data)
-
-        # 4. 주식 정보 특화 처리
+        
+        # 5. 주식 정보 특화 처리
         elif '주식' in section:
             text = self._improve_stock_text(text, structured_data)
-
-        # 5. 날짜 정규화
+        
+        # 6. 날짜 정규화
         text = self._normalize_dates_in_text(text)
-
+        
         return text
-
+    
     def _reconstruct_structured_from_text(self, text: str) -> Dict[str, str]:
         """natural_text에서 structured_data 재구성"""
         data = {}
@@ -312,11 +267,41 @@ class DataNormalizer:
         return ""
     
     def _generate_treasury_stock_sentence(self, data: Dict, metadata: Dict) -> str:
-        """자기주식 취득 자연어 문장 생성"""
-        company = metadata.get('corp_name', '회사')
-        doc_name = metadata.get('document_name', '')
+        """자기주식 취득 자연어 문장 생성
         
-        # 데이터 추출
+        structured_data 예시:
+        - "1. 계약금액": "1,000,000,000"
+        - "2. 계약기간 > 시작일": "2025-01-10"
+        - "3. 계약목적": "주주가치 제고"
+        """
+        
+        # 데이터가 단일 항목인 경우, structured.py에서 이미 자연어 생성됨
+        # 여기서는 그대로 반환하되 날짜/숫자 정규화만 수행
+        if len(data) == 1:
+            key, value = next(iter(data.items()))
+            
+            # 값 정규화
+            value_normalized = value
+            
+            # 날짜 정규화
+            if re.match(r'\d{4}년\s*\d{1,2}월\s*\d{1,2}일', value):
+                value_normalized = self._normalize_dates_in_text(value)
+            
+            # 숫자 단위 추가
+            if '주식' in key and value.replace(',', '').replace('주', '').isdigit():
+                num = value.replace(',', '').replace('주', '')
+                value_normalized = f"{int(num):,}주"
+            elif '금액' in key and value.replace(',', '').isdigit():
+                value_normalized = self._format_financial_amount(value)
+            elif '비율' in key and value.replace(',', '').replace('%', '').replace('.', '').isdigit():
+                if '%' not in value:
+                    value_normalized = f"{value}%"
+            
+            # 자연어 문장 반환
+            return f"{key}: {value_normalized}"
+        
+        # 다중 항목인 경우 (레거시 대응)
+        company = metadata.get('corp_name', '회사')
         contract_amount = None
         start_date = None
         end_date = None
@@ -328,15 +313,8 @@ class DataNormalizer:
         
         # 키 매칭 (다양한 표현 대응)
         for key, value in data.items():
-            key_lower = key.lower().replace(' ', '')
-            
-            # 계약금액
-            if '계약금액' in key or '금액' in key:
-                if value and value != '-' and value.replace(',', '').isdigit():
-                    contract_amount = self._format_financial_amount(value)
-            
             # 시작일
-            elif '시작일' in key or '개시' in key:
+            if '시작일' in key or '개시' in key:
                 start_date = self._normalize_dates_in_text(str(value))
             
             # 종료일
@@ -344,20 +322,25 @@ class DataNormalizer:
                 end_date = self._normalize_dates_in_text(str(value))
             
             # 목적
-            elif '목적' in key or '용도' in key:
+            elif '목적' in key:
                 purpose = value
             
             # 증권사/중개업자
-            elif '체결기관' in key or '중개업자' in key or '증권' in key:
+            elif '체결기관' in key or '중개업자' in key:
                 broker = value
             
             # 결정일
             elif '결정일' in key or '예정일자' in key:
                 decision_date = self._normalize_dates_in_text(str(value))
             
+            # 계약금액
+            elif '계약금액' in key or ('금액' in key and '계약' in key):
+                if value and value != '-' and value.replace(',', '').isdigit():
+                    contract_amount = self._format_financial_amount(value)
+            
             # 보유 주식수
-            elif '보통주식' in key and value and value.replace(',', '').isdigit():
-                shares_before = self._format_number_with_unit(value, '주')
+            elif '보통주식' in key and value and value.replace(',', '').replace('주', '').isdigit():
+                shares_before = self._format_number_with_unit(value.replace('주', ''), '주')
             
             # 보유 비율
             elif '비율' in key and value and value != '-':
@@ -366,11 +349,14 @@ class DataNormalizer:
         # 자연어 문장 생성
         parts = []
         
+        # 조사 선택 (받침 유무)
+        josa = self._get_josa(company, '은', '는')
+        
         # 기본 문장
         if decision_date:
-            parts.append(f"{company}는 {decision_date}에 자기주식 취득 신탁계약 체결을 결정했습니다.")
+            parts.append(f"{company}{josa} {decision_date}에 자기주식 취득 신탁계약 체결을 결정했습니다.")
         else:
-            parts.append(f"{company}는 자기주식 취득 신탁계약을 체결했습니다.")
+            parts.append(f"{company}{josa} 자기주식 취득 신탁계약을 체결했습니다.")
         
         # 계약금액
         if contract_amount:
@@ -717,10 +703,15 @@ class DataNormalizer:
 
         return ". ".join(parts) + "." if parts else ""
     
-    def _format_financial_amount(self, value: str) -> str:
-        """금액을 억원/만원 단위로 포맷팅"""
+    def _format_financial_amount(self, value: str, context: str = "") -> str:
+        """금액을 억원/만원 단위로 포맷팅 (연도 제외, 안전한 콤마 추가)"""
         try:
-            num = int(str(value).replace(',', '').replace(' ', ''))
+            # 문자열 정리 (콤마 제거)
+            cleaned = str(value).replace(',', '').replace(' ', '')
+            num = int(cleaned)
+            
+            
+            # 금액 변환 (안전한 콤마 추가)
             if abs(num) >= 100_000_000:
                 eok = num / 100_000_000
                 return f"{eok:,.1f}억원" if eok != int(eok) else f"{int(eok):,}억원"
@@ -733,51 +724,137 @@ class DataNormalizer:
             return str(value)
     
     def _format_number_with_unit(self, value: str, unit: str) -> str:
-        """숫자에 단위 추가"""
+        """숫자에 단위 추가 (안전한 콤마 추가)"""
         try:
-            num = int(str(value).replace(',', '').replace(' ', ''))
+            # 콤마 제거 후 숫자 변환
+            clean_value = str(value).replace(',', '').replace(' ', '')
+            num = int(clean_value)
             return f"{num:,}{unit}"
         except (ValueError, TypeError):
             return f"{value}{unit}"
     
+    def _get_josa(self, word: str, josa_with_final: str, josa_without_final: str) -> str:
+        """받침에 따라 적절한 조사 선택
+        
+        Args:
+            word: 단어
+            josa_with_final: 받침 있을 때 조사 (예: '은', '이', '을')
+            josa_without_final: 받침 없을 때 조사 (예: '는', '가', '를')
+        """
+        if not word:
+            return josa_without_final
+        
+        # 마지막 글자
+        last_char = word[-1]
+        
+        # 한글이 아니면 기본값
+        if not ('가' <= last_char <= '힣'):
+            # 영어/숫자 등: 발음 기준 (간단히 모음으로 끝나면 받침 없음)
+            if last_char.lower() in ['a', 'e', 'i', 'o', 'u', '0', '2', '4', '6', '8']:
+                return josa_without_final
+            return josa_with_final
+        
+        # 한글: 받침 확인
+        # 유니코드: '가'(0xAC00) + (초성*21*28) + (중성*28) + 종성
+        # 종성이 0이면 받침 없음
+        code = ord(last_char) - 0xAC00
+        jongseong = code % 28
+        
+        if jongseong == 0:
+            return josa_without_final  # 받침 없음
+        else:
+            return josa_with_final  # 받침 있음
+    
     def _reduce_repetition(self, text: str) -> str:
-        """과도한 반복 축소 및 자연어 개선"""
-
-        # 1. 동일한 키-값 반복 제거
-        # "중소기업 해당 여부: 중견기업 해당 여부, 중소기업 해당 여부: 중견기업 해당 여부"
-        # → "중소기업 해당 여부: 중견기업 해당 여부"
-        parts = text.split(', ')
-        seen = set()
-        unique_parts = []
-        for part in parts:
-            part_clean = part.strip()
-            if part_clean and part_clean not in seen:
-                unique_parts.append(part_clean)
-                seen.add(part_clean)
-        text = ', '.join(unique_parts)
-
-        # 2. "키: 키" 패턴 제거 (동일한 키와 값)
-        # "사업연도: 사업연도" → ""
-        text = re.sub(r'([^,:]+):\s*\1(?=,|$)', '', text)
+        """과도한 반복 축소 및 자연어 개선
+        
+        주의: 숫자 내 콤마는 절대 분리하지 않음
+        """
+        
+        import re
+        
+        # 숫자 내 콤마를 보호하기 위해 최소한의 처리만 수행
+        # "키: 키" 패턴 제거 (동일한 키와 값, 단 의미있는 데이터는 제외)
+        # 단, "신규설립", "신규연결" 등은 유지
+        # 주의: 숫자만으로 구성된 키는 제외 (예: "6: 6"은 "596: 6,333"의 일부)
+        text = re.sub(
+            r'([^,:]+):\s*\1(?=,|$)', 
+            lambda m: m.group(0) if (
+                any(keyword in m.group(1) for keyword in ['신규', '연결', '설립', '합병', '분할']) or
+                m.group(1).replace(' ', '').isdigit()  # 숫자만 있는 경우 제외
+            ) else '', 
+            text
+        )
 
         # 3. "은(는)" 제거
         text = re.sub(r'은\(는\)', '', text)
 
         # 4. 빈 항목 정리 (": ," 또는 시작/끝의 콤마)
-        text = re.sub(r':\s*,', ',', text)
+        # 주의: ": 숫자"는 제외 (예: "596: 6"은 정상 데이터)
+        text = re.sub(r':\s*,(?!\d)', ',', text)  # ": ," 제거 (단, 뒤에 숫자가 아닐 때만)
         text = re.sub(r',\s*,', ',', text)
         text = re.sub(r'^,\s*|\s*,$', '', text)
 
         # 5. 불필요한 공백 정리
         text = re.sub(r'\s{2,}', ' ', text)
 
-        # 6. 콤마 뒤 공백 통일
-        text = re.sub(r',\s*', ', ', text)
+        # 6. 콤마 뒤 공백 통일 (숫자 내 콤마는 제외)
+        # 숫자 패턴이 아닌 콤마만 공백 추가
+        text = re.sub(r'(?<!\d),(?=\s*[^0-9])', ', ', text)
 
         # 7. 콜론 뒤 공백 통일
         text = re.sub(r':\s+', ': ', text)
 
         return text.strip()
+    
+    def _process_large_raw_numbers(self, text: str) -> str:
+        """큰 raw 숫자 처리 (10자리 이상)
+        
+        Parser에서 raw number로 변환된 큰 숫자에 단위 추가
+        예: 1782278000000 → 1.8조원
+        """
+        
+        def add_unit_to_large_number(match):
+            num_str = match.group(1)  # 그룹 1 사용
+            try:
+                num = int(num_str)
+                
+                # 비정상적으로 큰 숫자 (20자리 이상)는 데이터 오류로 표시
+                if len(num_str) >= 20:
+                    jo = num / 1_000_000_000_000
+                    if jo > 1000:  # 1000조원 이상은 비정상
+                        return f"[데이터오류] {jo:.1f}조원"
+                    else:
+                        return f"{jo:.1f}조원"
+                
+                # 1조 이상 → 조원
+                elif abs(num) >= 1_000_000_000_000:
+                    jo = num / 1_000_000_000_000
+                    return f"{jo:.1f}조원"
+                
+                # 1억 이상 → 억원
+                elif abs(num) >= 100_000_000:
+                    eok = num / 100_000_000
+                    return f"{eok:.1f}억원" if eok != int(eok) else f"{int(eok):,}억원"
+                
+                # 1만 이상 → 만원
+                elif abs(num) >= 10_000:
+                    man = num / 10_000
+                    return f"{man:.1f}만원" if man != int(man) else f"{int(man):,}만원"
+                
+                else:
+                    return f"{num:,}원"
+                    
+            except (ValueError, AttributeError, OverflowError):
+                # 오버플로우 발생 시 원본 반환
+                return match.group(0)
+        
+        # 10자리 이상 숫자만 처리
+        # 단어 경계가 아닌 위치에서도 매치 (콜론, 공백 등 뒤)
+        # 단, 이미 단위가 있거나 소수점 일부인 경우 제외
+        text = re.sub(r'(?:^|[^0-9.])(\d{10,})(?![억만조원%주0-9.])(?!\s*년)', add_unit_to_large_number, text)
+        
+        return text
     
     def _improve_financial_text(self, text: str, data: Dict) -> str:
         """재무 데이터 자연어 개선 - 일관된 단위 추가"""
@@ -790,9 +867,10 @@ class DataNormalizer:
             text
         )
         
-        # 2. 큰 숫자에 단위 추가 (억원)
+        # 2. 큰 숫자에 단위 추가 (억원) - 안전한 콤마 처리
         def add_currency_unit(match):
-            num_str = match.group(0).replace(',', '')
+            # 콤마 제거 후 숫자 변환
+            num_str = match.group(0).replace(',', '').replace(' ', '')
             try:
                 num = int(num_str)
                 
@@ -815,18 +893,18 @@ class DataNormalizer:
                 # 그 외 → 원
                 else:
                     return f"{num:,}원"
-                    
+                        
             except (ValueError, AttributeError):
                 return match.group(0)
         
-        # 8자리 이상 숫자 (이미 단위 없는 경우만)
-        text = re.sub(r'\b(\d{8,})(?![억만원%주])', add_currency_unit, text)
+        # 8자리 이상 숫자 (이미 단위 없는 경우만, 연도 제외)
+        text = re.sub(r'\b(\d{8,})(?![억만원%주])(?!\s*년)', add_currency_unit, text)
         
-        # 콤마가 있는 숫자 (이미 단위 없는 경우만)
-        text = re.sub(r'\b(\d{1,3}(?:,\d{3})+)(?![억만원%주])', add_currency_unit, text)
+        # 콤마가 있는 숫자 (이미 단위 없는 경우만, 연도 제외)
+        text = re.sub(r'\b(\d{1,3}(?:,\d{3})+)(?![억만원%주])(?!\s*년)', add_currency_unit, text)
         
-        # 4자리 이상 숫자 (단위 없는 경우)
-        text = re.sub(r'\b(\d{4,7})(?![억만원%주,])', add_currency_unit, text)
+        # 4자리 이상 숫자 (단위 없는 경우, 연도 제외)
+        text = re.sub(r'\b(\d{4,7})(?![억만원%주,])(?!\s*년)', add_currency_unit, text)
         
         return text
     
@@ -846,21 +924,21 @@ class DataNormalizer:
             text = re.sub(r'\b(\d+)(?!%|주|,)', r'\1%', text)
             text = re.sub(r'\b(\d+\.\d+)(?!%)', r'\1%', text)
         
-        # 2. "주" 단위 추가 (이미 단위가 없는 경우만)
-        # 콤마가 있는 숫자
-        text = re.sub(r'\b(\d{1,3}(?:,\d{3})+)(?![억만원%주])', r'\1주', text)
+        # 2. "주" 단위 추가 (이미 단위가 없는 경우만, 연도 제외)
+        # 콤마가 있는 숫자 (연도 패턴 제외)
+        text = re.sub(r'\b(\d{1,3}(?:,\d{3})+)(?![억만원%주])(?!\s*년)', r'\1주', text)
         
-        # 4자리 이상 숫자 (단위 없는 경우)
-        text = re.sub(r'\b(\d{4,})(?![억만원%주,])', r'\1주', text)
+        # 4자리 이상 숫자 (단위 없는 경우, 연도 패턴 제외)
+        text = re.sub(r'\b(\d{4,})(?![억만원%주,])(?!\s*년)', r'\1주', text)
         
         return text
     
     def _improve_text_content(self, text: str, metadata: Dict, section_path: str = "") -> str:
         """텍스트 콘텐츠 개선 - 가독성 향상 및 스마트 분할"""
-
+        
         # 1. 날짜 정규화
         text = self._normalize_dates_in_text(text)
-
+        
         # 2. 숫자에 단위 추가 (컨텍스트 기반)
         text = self._add_units_to_numbers(text, section_path)
 
@@ -882,38 +960,72 @@ class DataNormalizer:
 
         # 7. 과도한 공백 정리
         text = re.sub(r' {2,}', ' ', text)
-
+        
         return text
     
     def _add_units_to_numbers(self, text: str, section_path: str = "") -> str:
-        """컨텍스트 기반 숫자 단위 추가"""
+        """컨텍스트 기반 숫자 단위 추가
+        
+        주의: 
+        - 날짜 패턴은 제외
+        - "단위: 천원", "(단위: 백만원)" 등의 컨텍스트 반영
+        """
         
         # 이미 단위가 있는지 체크
         has_unit_pattern = r'(?:[억만천백십]|원|주|%|건|개|명|년|월|일)'
         
+        # 텍스트에서 단위 정보 추출
+        unit_multiplier = 1
+        if '단위' in text or '單位' in text:
+            if '천원' in text or '천 원' in text:
+                unit_multiplier = 1000
+            elif '백만원' in text or '백만 원' in text:
+                unit_multiplier = 1000000
+            elif '억원' in text or '억 원' in text:
+                unit_multiplier = 100000000
+        
         # 1. 재무/금액 관련
         if any(keyword in text for keyword in ['매출', '자산', '부채', '자본', '금액', '가격', '원']):
-            # 8자리 이상 → 억원
+            # 8자리 이상 → 억원 (날짜 제외, 단위 적용, 안전한 콤마 처리)
+            def format_large_number(match):
+                # 콤마 제거 후 숫자 변환
+                clean_num_str = match.group(1).replace(',', '').replace(' ', '')
+                num = int(clean_num_str) * unit_multiplier
+                return f"{num/100_000_000:,.0f}억원"
+            
             text = re.sub(
-                r'\b(\d{8,})(?!' + has_unit_pattern + ')',
-                lambda m: f"{int(m.group(1))/100_000_000:,.0f}억원",
+                r'\b(\d{8,})(?!' + has_unit_pattern + r'|[-./]\d)',
+                format_large_number,
                 text
             )
-            # 콤마 숫자 → 적절한 단위
+            
+            # 콤마 숫자 → 적절한 단위 (날짜 아닌 경우만, 단위 적용, 안전한 콤마 처리)
+            def add_currency_if_not_date(match):
+                num_str = match.group(1)
+                # 주변 문맥 확인 (날짜 하이픈/점이 앞뒤에 있으면 스킵)
+                start = match.start()
+                end = match.end()
+                if start > 0 and text[start-1] in '-./':
+                    return num_str
+                if end < len(text) and text[end] in '-./':
+                    return num_str
+                # 콤마 제거 후 포맷팅
+                return self._format_currency(num_str, unit_multiplier)
+            
             text = re.sub(
                 r'\b(\d{1,3}(?:,\d{3})+)(?!' + has_unit_pattern + ')',
-                lambda m: self._format_currency(m.group(1)),
+                add_currency_if_not_date,
                 text
             )
         
         # 2. 주식 관련
         elif any(keyword in text for keyword in ['주식', '주수', '보통주', '우선주']):
             text = re.sub(
-                r'\b(\d{1,3}(?:,\d{3})+)(?!' + has_unit_pattern + ')',
+                r'\b(\d{1,3}(?:,\d{3})+)(?!' + has_unit_pattern + r')(?!\s*년)',
                 r'\1주',
                 text
             )
-            text = re.sub(r'\b(\d{4,})(?!' + has_unit_pattern + ')', r'\1주', text)
+            text = re.sub(r'\b(\d{4,})(?!' + has_unit_pattern + r')(?!\s*년)', r'\1주', text)
         
         # 3. 비율 관련
         elif any(keyword in text for keyword in ['비율', '율', '지분', '점유']):
@@ -922,10 +1034,22 @@ class DataNormalizer:
         
         return text
     
-    def _format_currency(self, num_str: str) -> str:
-        """금액 포맷팅"""
+    def _format_currency(self, num_str: str, unit_multiplier: int = 1) -> str:
+        """금액 포맷팅 (안전한 콤마 추가)
+        
+        Args:
+            num_str: 숫자 문자열 (예: "838319" 또는 "838,319")
+            unit_multiplier: 단위 승수
+                - 1: 원 (기본)
+                - 1000: 천원
+                - 1000000: 백만원
+                - 100000000: 억원
+        """
         try:
-            num = int(num_str.replace(',', ''))
+            # 콤마 제거 후 숫자 변환
+            clean_num_str = num_str.replace(',', '').replace(' ', '')
+            num = int(clean_num_str) * unit_multiplier
+            
             if num >= 100_000_000:
                 eok = num / 100_000_000
                 return f"{eok:,.0f}억원" if eok == int(eok) else f"{eok:,.1f}억원"
@@ -1024,15 +1148,16 @@ class DataNormalizer:
         if any(unit in value for unit in ['원', '주', '억', '%', '건']):
             return value
         
-        # 콤마로 구분된 큰 숫자
+        # 콤마로 구분된 큰 숫자 (안전한 콤마 처리)
         if re.match(r'^[\d,]+$', value.replace(',', '')):
-            num_str = value.replace(',', '')
+            # 콤마 제거 후 숫자 변환
+            clean_value = value.replace(',', '').replace(' ', '')
             try:
-                num = int(num_str)
+                num = int(clean_value)
                 
                 # 문맥에서 단위 추론 (주석 필드 제외)
                 if ('주식' in key or '주' in key) and '주석' not in key and '주 석' not in key:
-                    return f"{value}주"
+                    return f"{num:,}주"
                 elif '자산' in key or '부채' in key or '자본' in key or '매출' in key or '금액' in key:
                     if abs(num) >= self.config.currency_unit_threshold:
                         eok = num / 100_000_000
@@ -1040,7 +1165,7 @@ class DataNormalizer:
                             return f"{int(eok):,}억원"
                         else:
                             return f"{eok:,.1f}억원"
-                    return f"{value}원"
+                    return f"{num:,}원"
                 
             except:
                 pass
@@ -1048,61 +1173,47 @@ class DataNormalizer:
         return value
 
 
-def process_jsonl_file(input_file: str, output_file: str):
+def process_jsonl_file(input_file: Path, output_file: Path):
     """
     Step 2: JSONL 파일 정규화
     
-    입력: step1_structured의 JSONL 파일
+    입력: step1_parser의 JSONL 파일
     출력: step2_normalized의 JSONL 파일
     """
     
     normalizer = DataNormalizer()
     
-    processed_count = 0
+    processed_chunks = []
     error_count = 0
     
-    with open(input_file, 'r', encoding='utf-8') as infile, \
-         open(output_file, 'w', encoding='utf-8') as outfile:
-
-        for line_no, line in enumerate(infile, 1):
-            try:
-                chunk = json.loads(line)
-                result = normalizer.normalize_chunk(chunk)
-
-                # normalize_chunk은 단일 chunk 또는 chunk 리스트를 반환
-                if isinstance(result, list):
-                    # 분할된 경우 모든 chunk 저장
-                    for normalized_chunk in result:
-                        outfile.write(json.dumps(normalized_chunk, ensure_ascii=False) + '\n')
-                        processed_count += 1
-                else:
-                    # 단일 chunk 저장
-                    outfile.write(json.dumps(result, ensure_ascii=False) + '\n')
-                    processed_count += 1
-            except Exception as e:
-                print(f"⚠️  Line {line_no} 처리 실패: {e}")
-                error_count += 1
-                continue
+    for chunk in read_jsonl(input_file):
+        try:
+            normalized_chunk = normalizer.normalize_chunk(chunk)
+            processed_chunks.append(normalized_chunk)
+        except Exception as e:
+            print(f"⚠️  청크 처리 실패: {e}")
+            error_count += 1
+            continue
     
-    print(f"✅ {processed_count}개 청크 정규화 완료")
+    # 정규화된 청크 저장
+    write_jsonl(output_file, processed_chunks)
+    
+    print(f"✅ {len(processed_chunks)}개 청크 정규화 완료")
     if error_count > 0:
         print(f"⚠️  {error_count}개 청크 처리 실패")
 
 
-def process_directory(input_dir: str, output_dir: str):
+def process_directory(input_dir: Path, output_dir: Path):
     """
     Step 2: 디렉토리 내 모든 JSONL 파일 정규화
     
-    입력: data/transform/structured/
+    입력: data/transform/parser/
     출력: data/transform/normalized/
     """
-    from pathlib import Path
     
-    input_path = Path(input_dir)
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    ensure_output_dir(output_dir)
     
-    jsonl_files = list(input_path.glob("*_chunks.jsonl"))
+    jsonl_files = get_file_list(input_dir)
     
     if not jsonl_files:
         print("❌ JSONL 파일이 없습니다.")
@@ -1111,8 +1222,8 @@ def process_directory(input_dir: str, output_dir: str):
     print("=" * 80)
     print("Transform Pipeline - Step 2: 데이터 정규화 및 품질 개선")
     print("=" * 80)
-    print(f"📁 입력: {input_path}")
-    print(f"📁 출력: {output_path}")
+    print(f"📁 입력: {input_dir}")
+    print(f"📁 출력: {output_dir}")
     print(f"📄 처리할 파일 수: {len(jsonl_files)}개")
     print(f"\n처리 내용: 마크다운 제거, 숫자 단위 변환, 날짜 정규화, 품질 개선")
     print(f"다음 단계: chunker.py로 스마트 청킹 수행")
@@ -1121,8 +1232,8 @@ def process_directory(input_dir: str, output_dir: str):
     
     for i, input_file in enumerate(jsonl_files, 1):
         print(f"[{i}/{len(jsonl_files)}] 처리 중: {input_file.name}")
-        output_file = output_path / input_file.name
-        process_jsonl_file(str(input_file), str(output_file))
+        output_file = output_dir / input_file.name
+        process_jsonl_file(input_file, output_file)
         print(f"  💾 저장: {output_file.name}")
         print()
     
@@ -1131,28 +1242,31 @@ def process_directory(input_dir: str, output_dir: str):
     print("=" * 80)
 
 
-if __name__ == "__main__":
+def main():
+    """Normalizer 메인 함수"""
     import sys
-    from pathlib import Path
     
     # 디렉토리 모드 (권장)
     if len(sys.argv) == 1:
         # 기본 경로 사용
-        script_dir = Path(__file__).parent
-        data_dir = script_dir.parent.parent.parent / "data"
-        input_dir = data_dir / "transform" / "structured"
-        output_dir = data_dir / "transform" / "normalized"
+        paths = get_transform_paths(__file__)
+        input_dir = paths['parser_dir']
+        output_dir = paths['normalized_dir']
         
-        process_directory(str(input_dir), str(output_dir))
+        process_directory(input_dir, output_dir)
     
     # 단일 파일 모드
     elif len(sys.argv) == 3:
-        input_file = sys.argv[1]
-        output_file = sys.argv[2]
+        input_file = Path(sys.argv[1])
+        output_file = Path(sys.argv[2])
         process_jsonl_file(input_file, output_file)
     
     else:
         print("사용법:")
-        print("  1. 디렉토리 모드 (권장): python data_normalizer.py")
-        print("  2. 단일 파일 모드:      python data_normalizer.py <input.jsonl> <output.jsonl>")
+        print("  1. 디렉토리 모드 (권장): python normalizer.py")
+        print("  2. 단일 파일 모드:      python normalizer.py <input.jsonl> <output.jsonl>")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
