@@ -34,8 +34,11 @@ def load_corp_map(json_path: Path) -> Dict[str, str]:
 
 
 def main() -> None:
-    script_dir = Path(__file__).parent
-    data_dir = script_dir.parent / "data"
+    script_dir = Path(__file__).parent  # service/etl/extractor
+    # etl_dir = script_dir.parent  # service/etl
+    # service_dir = etl_dir.parent  # service
+    project_root = script_dir.parent.parent.parent  # project root
+    data_dir = project_root / "data"
     src_names = data_dir / "kospi_top100.txt"
     
     # 최신 JSON 파일 찾기

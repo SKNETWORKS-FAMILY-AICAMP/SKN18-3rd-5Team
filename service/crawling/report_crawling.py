@@ -17,11 +17,11 @@ async def crawl_shinhan_reports(num: int = 1000):
     base_url = "https://m.shinhansec.com/mweb/invt/shrh/ishrh1001?tabIdx=1"
     results = []
     filter_date = datetime(2025, 1, 1)
-    MAX_CARDS = num  # 🚧 테스트 시 10개만 (완료되면 1000으로 변경 가능)
+    MAX_CARDS = num  # 스크롤 최대 감지 수
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False) # 크롤링 미리보기 켜기
-        browser = await p.chromium.launch(headless=True) # 크롤링 미리보기 끄기
+        # 🧭 브라우저 실행 (백그라운드)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             viewport={"width": 430, "height": 932},
             user_agent=(
@@ -35,7 +35,7 @@ async def crawl_shinhan_reports(num: int = 1000):
         await page.wait_for_selector("li.list__card-items")
         print(f"📜 무한 스크롤 시작... (최대 {MAX_CARDS}개까지)")
 
-        # 🔽 무한 스크롤
+        # 🔽 무한 스크롤 (최대 MAX_CARDS개 감지)
         prev_count, same_count = 0, 0
         while True:
             await page.evaluate("""
@@ -66,7 +66,7 @@ async def crawl_shinhan_reports(num: int = 1000):
         cards = await page.query_selector_all("li.list__card-items")
         print(f"총 {len(cards)}개 카드 감지 완료!\n")
 
-        # 🧩 각 카드 본문 크롤링
+        # 🧩 각 카드의 세부 리포트 본문 크롤링
         for i, card in enumerate(cards[:MAX_CARDS]):
             try:
                 data = await card.query_selector("div.list_data_area")
@@ -94,34 +94,42 @@ async def crawl_shinhan_reports(num: int = 1000):
                 content = ""
 
                 try:
-                    # ✅ iframe 내부 접근
+                    # ✅ iframe 존재 시 접근
                     frames = detail_page.frames
                     target_frame = None
                     for f in frames:
-                        if "bbs2.shinhaninvest.com" in (f.url or ""):
+                        if any(domain in (f.url or "") for domain in ["bbs2.shinhaninvest.com", "bbs2.shinhansec.com"]):
                             target_frame = f
                             break
 
+                    # ✅ iframe 있으면 그 내부에서 본문 찾기
                     if target_frame:
-                        await target_frame.wait_for_selector("#contents", timeout=20000)
-
-                        # ✅ 요약(span) 제거 (본문 첫 span 전체 삭제)
+                        await target_frame.wait_for_selector("#contents, #contents_detail_view", timeout=20000)
                         await target_frame.evaluate("""
-                            const container = document.querySelector('#contents');
+                            const container = document.querySelector('#contents, #contents_detail_view');
                             if (container) {
                                 const firstSpan = container.querySelector('span');
                                 if (firstSpan) firstSpan.remove();
                             }
                         """)
-
-                        # ✅ 본문 추출
-                        content_el = await target_frame.query_selector("#contents")
-                        if content_el:
-                            content = await content_el.inner_text()
-                        else:
-                            print(f"⚠️ 본문 요소 없음: {title}")
+                        content_el = await target_frame.query_selector("#contents, #contents_detail_view")
                     else:
-                        print(f"⚠️ iframe을 찾을 수 없음: {title}")
+                        # ✅ iframe이 없으면 바로 본문 접근
+                        await detail_page.wait_for_selector("#contents, #contents_detail_view", timeout=20000)
+                        await detail_page.evaluate("""
+                            const container = document.querySelector('#contents, #contents_detail_view');
+                            if (container) {
+                                const firstSpan = container.querySelector('span');
+                                if (firstSpan) firstSpan.remove();
+                            }
+                        """)
+                        content_el = await detail_page.query_selector("#contents, #contents_detail_view")
+
+                    # ✅ 본문 텍스트 추출
+                    if content_el:
+                        content = await content_el.inner_text()
+                    else:
+                        print(f"⚠️ 본문 요소 없음: {title}")
 
                 except Exception as e:
                     print(f"⚠️ 본문 추출 오류: {e}")
@@ -150,9 +158,10 @@ async def crawl_shinhan_reports(num: int = 1000):
     df = pd.DataFrame(results)
     output_path = Path(__file__).resolve().parents[2] / "data" / "shinhan_research_2025_playwright.csv"
     df.to_csv(output_path, index=False, encoding="utf-8-sig")
-    print(f"\n✅ 총 {len(df)}개 데이터 저장 완료! → shinhan_research_2025_playwright.csv")
 
+    print(f"\n✅ 총 {len(df)}개 데이터 저장 완료! → {output_path}")
 
+# 실행
 if __name__ == "__main__":
-    reports_num = 10
+    reports_num = 1000  # 1000개까지 스크롤
     asyncio.run(crawl_shinhan_reports(reports_num))
