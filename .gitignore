@@ -232,13 +232,21 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+#Sqlite3
+*.db
+*.sqlite3
+db.sqlite3
 
 #ETC
 .history
 data/*
 models/*
 **/.cache/
+
 service/fine_tuning/llama_factory/dataset/*
 !service/fine_tuning/llama_factory/dataset/.gitkeep
 !service/fine_tuning/llama_factory/dataset/dataset_info.json
+
+# chat-data 
+app_database.db
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
