@@ -236,7 +236,7 @@ $RECYCLE.BIN/
 #ETC
 .history
 data/*
-# models/*
+models/*
 **/.cache/
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
