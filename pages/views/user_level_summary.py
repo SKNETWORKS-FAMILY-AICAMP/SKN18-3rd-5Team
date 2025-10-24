@@ -13,6 +13,6 @@ def render_user_level_summary():
         correct = user_level_info.get("correct_answers", 0)
         total = user_level_info.get("total_questions", 0)
         
-        st.info(f"나의 투자 레벨 {icon} {level}")
+        st.info(f"나의 투자 레벨: {icon} {level}")
     else:
-        st.info("[초급] 설정에 맞춰 답변해 드립니다. 투자 레벨 진단 받고 최적화된 답변을 받아보세요!")
+        st.info("ℹ️ 먼저 투자 레벨을 진단 받고 더욱 최적화된 답변을 받아보세요!")
