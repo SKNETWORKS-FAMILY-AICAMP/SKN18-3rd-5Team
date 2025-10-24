@@ -1,8 +1,68 @@
 from __future__ import annotations
 import streamlit as st
-import json
 from datetime import datetime
-from pathlib import Path
+from service.chat_service import ChatService
+
+def change_chat_theme() -> None:
+    st.markdown("""
+    <style>
+    div.stButton > button {
+        background: #FFFFFF;        /* 흰색 배경 */
+        color: #3B82F6;             /* 버튼 글자 색 (예: 파란색) */
+        border: 1px solid #E5E7EB;  /* 테두리 약하게 */
+        padding: 0.6rem 1.2rem;     
+        border-radius: 10px;
+        font-weight: 600;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+    div.stButton > button:hover {
+        background: #F9FAFB;        /* hover 시 살짝 회색톤 */
+        border-color: #D1D5DB;
+    }
+    
+    /* 채팅 입력창 스타일 */
+    .stChatInput > div > div > div > div {
+        border: 2px solid #E5E7EB !important;
+        border-radius: 12px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stChatInput > div > div > div > div:focus-within {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 2px 8px rgba(0,0,0,0.12) !important;
+    }
+    
+    /* 입력창 내부 텍스트 영역 */
+    .stChatInput textarea {
+        border: 1px solid #D1D5DB !important;
+        border-radius: 8px !important;
+        outline: none !important;
+        padding: 12px 16px !important;
+        background: #FFFFFF !important;
+        transition: border-color 0.2s ease !important;
+    }
+    
+    .stChatInput textarea:focus {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+    }
+    
+    /* 전송 버튼 스타일 */
+    .stChatInput button {
+        background: #3B82F6 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        margin: 4px !important;
+    }
+    
+    .stChatInput button:hover {
+        background: #2563EB !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+
 
 # 예상 질문 목록
 SUGGESTED_QUESTIONS = [
@@ -16,12 +76,17 @@ SUGGESTED_QUESTIONS = [
     "💎 장기투자 vs 단기투자 어떤 게 좋을까요?"
 ]
 
-# 대화 저장 경로
-CHAT_SAVE_DIR = Path("data/chat_sessions")
-CHAT_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+
+# 채팅 서비스 초기화
+chat_service = ChatService()
 
 def render_chat_panel() -> None:
     """Render interactive chat interface for Q&A."""
+    # 버튼 스타일 적용
+    change_chat_theme()
+    
     _init_state()
     
     # 대화창 관리 사이드바를 맨 먼저 렌더링 (상단에 위치)
@@ -92,7 +157,7 @@ def _render_chat_sessions_sidebar() -> None:
                     if st.button(
                         f"{'🔊' if session_id == st.session_state.current_session_id else ' '} {session['title'][:20]}...",
                         key=f"session_{session_id}",
-                        use_container_width=True
+                        width='stretch'
                     ):
                         st.session_state.current_session_id = session_id
                         st.rerun()
@@ -103,12 +168,12 @@ def _render_chat_sessions_sidebar() -> None:
                         st.rerun()
 
         # 새 대화 버튼
-        if st.button("➕ 새 대화", use_container_width=True):
+        if st.button("➕ 새 대화", width='stretch'):
             _create_new_session()
             st.rerun()
         
-        # 구분선 추가
-        st.markdown("---")
+        st.write("---")
+        st.caption("© 2025 SKN18-3rd-5Team")
 
 
 def _create_new_session() -> None:
@@ -116,25 +181,37 @@ def _create_new_session() -> None:
     session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     title = f"대화 {len(st.session_state.chat_sessions) + 1}"
     
-    st.session_state.chat_sessions[session_id] = {
-        "title": title,
-        "created_at": datetime.now().isoformat(),
-        "messages": [
-            {
-                "role": "assistant",
-                "content": "안녕하세요! 투자 관련 궁금한 점을 언제든 물어보세요. 아래 버튼을 클릭하거나 직접 질문을 입력해주세요! 😊",
-                "timestamp": datetime.now().isoformat()
-            }
-        ]
-    }
-    st.session_state.current_session_id = session_id
-    _save_session(session_id)
+    # SQLite에 세션 생성
+    if chat_service.create_session(session_id, title):
+        # 초기 메시지 추가
+        chat_service.add_message(
+            session_id, 
+            "assistant", 
+            "안녕하세요! 투자 관련 궁금한 점을 언제든 물어보세요. 위 버튼을 클릭하거나 직접 질문을 입력해주세요! 😊"
+        )
+        
+        # 세션 상태에 추가
+        st.session_state.chat_sessions[session_id] = {
+            "title": title,
+            "created_at": datetime.now().isoformat(),
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "안녕하세요! 투자 관련 궁금한 점을 언제든 물어보세요. 위 버튼을 클릭하거나 직접 질문을 입력해주세요! 😊",
+                    "timestamp": datetime.now().isoformat()
+                }
+            ]
+        }
+        st.session_state.current_session_id = session_id
 
 
 def _delete_session(session_id: str) -> None:
     """대화 세션 삭제"""
-    if session_id in st.session_state.chat_sessions:
-        del st.session_state.chat_sessions[session_id]
+    # SQLite에서 세션 삭제
+    if chat_service.delete_session(session_id):
+        # 세션 상태에서도 삭제
+        if session_id in st.session_state.chat_sessions:
+            del st.session_state.chat_sessions[session_id]
         
         # 삭제된 세션이 현재 세션이면 다른 세션으로 변경
         if st.session_state.current_session_id == session_id:
@@ -142,11 +219,6 @@ def _delete_session(session_id: str) -> None:
                 st.session_state.current_session_id = list(st.session_state.chat_sessions.keys())[0]
             else:
                 _create_new_session()
-        
-        # 파일에서도 삭제
-        session_file = CHAT_SAVE_DIR / f"{session_id}.json"
-        if session_file.exists():
-            session_file.unlink()
 
 
 def _handle_user_input(user_input: str) -> None:
@@ -158,44 +230,47 @@ def _handle_user_input(user_input: str) -> None:
     # 첫 번째 사용자 메시지로 대화 제목 업데이트
     current_session = st.session_state.chat_sessions[st.session_state.current_session_id]
     if len(current_session['messages']) == 3:  # 초기 메시지 + 사용자 질문 + 봇 응답
-        current_session['title'] = user_input[:30] + ("..." if len(user_input) > 30 else "")
+        new_title = user_input[:30] + ("..." if len(user_input) > 30 else "")
+        current_session['title'] = new_title
+        # SQLite에도 제목 업데이트
+        chat_service.update_session_title(st.session_state.current_session_id, new_title)
     
-    _save_session(st.session_state.current_session_id)
     st.rerun()
 
 
 def _append_message(role: str, content: str) -> None:
     """현재 세션에 메시지 추가"""
-    current_session = st.session_state.chat_sessions[st.session_state.current_session_id]
+    session_id = st.session_state.current_session_id
+    timestamp = datetime.now().isoformat()
+    
+    # SQLite에 메시지 추가
+    chat_service.add_message(session_id, role, content)
+    
+    # 세션 상태에도 추가
+    current_session = st.session_state.chat_sessions[session_id]
     current_session['messages'].append({
         "role": role,
         "content": content,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": timestamp
     })
 
 
-def _save_session(session_id: str) -> None:
-    """세션을 파일에 저장"""
-    session_data = st.session_state.chat_sessions[session_id]
-    session_file = CHAT_SAVE_DIR / f"{session_id}.json"
-    
-    with open(session_file, 'w', encoding='utf-8') as f:
-        json.dump(session_data, f, ensure_ascii=False, indent=2)
-
-
 def _load_saved_sessions() -> None:
-    """저장된 세션들을 로드"""
-    if not CHAT_SAVE_DIR.exists():
-        return
-    
-    for session_file in CHAT_SAVE_DIR.glob("*.json"):
-        try:
-            with open(session_file, 'r', encoding='utf-8') as f:
-                session_data = json.load(f)
-                session_id = session_file.stem
-                st.session_state.chat_sessions[session_id] = session_data
-        except Exception as e:
-            st.error(f"세션 로드 실패: {session_file.name} - {e}")
+    """SQLite에서 저장된 세션들을 로드"""
+    try:
+        sessions = chat_service.get_all_sessions()
+        
+        for session in sessions:
+            session_id = session['id']
+            messages = chat_service.get_session_messages(session_id)
+            
+            st.session_state.chat_sessions[session_id] = {
+                "title": session['title'],
+                "created_at": session['created_at'],
+                "messages": messages
+            }
+    except Exception as e:
+        st.error(f"세션 로드 실패: {e}")
 
 
 def _avatar_for(role: str) -> str:

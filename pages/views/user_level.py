@@ -5,6 +5,7 @@ import streamlit as st
 # ------------------------------
 # Question Bank (적응형 트리 구조)
 # ------------------------------
+
 ALL_QUESTIONS = [
     # Q1 (초급·개념)
     {
@@ -152,9 +153,12 @@ ALL_QUESTIONS = [
     }
 ]
 
-TOTAL_QUESTIONS = 5
+TOTAL_QUESTIONS = 5     # 총 5문제로 테스트 진행
 
 
+#########################
+# 스타일 적용
+#########################
 def _inject_styles():
     st.markdown(
         """
@@ -278,6 +282,11 @@ def _inject_styles():
         unsafe_allow_html=True,
     )
 
+
+#########################
+# 문제풀이 실행 로직
+########################
+
 def _provide_feedback_and_advance(current_question, is_correct):
     """
     피드백을 표시한 뒤 잠시 대기하고 다음 문제로 이동합니다.
@@ -300,10 +309,10 @@ def _compute_final_level(question_results, correct_answers):
         default=-1
     )
     if highest_correct_rank == 2 and correct_answers >= 3:
-        return "고급", "🚀", "#F44336"
+        return "시장 항해자(초급)", "🚀", "#F44336"
     if highest_correct_rank >= 1 and correct_answers >= 2:
-        return "중급", "⚡", "#FF9800"
-    return "초급", "🔰", "#4CAF50"
+        return "파도 타는 서퍼(중급)", "⚡", "#FF9800"
+    return "파도 관찰자(고급)", "🔰", "#4CAF50"
 
 
 def _reset_user_level_state():
@@ -373,7 +382,16 @@ def render_user_level():
     _inject_styles()
     
     st.markdown("---")
-    st.markdown("### 🎯 나의 투자 지식 레벨은?")
+    st.markdown(
+    """
+    <h3 style="text-align: center; margin-top: 1rem; margin-bottom: 0rem;">
+        📋 나의 투자 지식 레벨은?
+    </h3>
+    """,
+    unsafe_allow_html=True
+)
+    st.markdown("---")
+
     
     # 테스트가 완료되지 않은 경우에만 문제 표시
     if not st.session_state.test_completed:
@@ -391,9 +409,9 @@ def render_user_level():
         
         # 난이도별 색상과 아이콘
         difficulty_colors = {
-            "초급": ("🔰", "#4CAF50"),
-            "중급": ("⚡", "#FF9800"), 
-            "고급": ("🔥", "#F44336")
+            "🌊파도 관찰자(초급)": ("🌊", "#4CAF50"),
+            "🚤파도 타는 서퍼(중급)": ("🚤", "#FF9800"), 
+            "🛳️시장 항해자(고급)": ("🛳️", "#F44336")
         }
         
         icon, color = difficulty_colors.get(current_question["difficulty"], ("❓", "#9E9E9E"))
@@ -468,9 +486,9 @@ def render_user_level():
         }
         
         level_guides = {
-            "초급": "💬 기본 개념을 반복 학습하며 안전한 투자 방법부터 차근히 익혀 보세요.",
-            "중급": "💬 기본적 분석과 기술적 분석을 병행하여 자신만의 투자 전략을 고도화해 보세요.",
-            "고급": "💬 리스크 관리와 포트폴리오 다각화를 통해 고도화된 전략을 실행해 보세요."
+            "파도 관찰자(초급)": "💬 기본 개념을 반복 학습하며 안전한 투자 방법부터 차근히 익혀 보세요.",
+            "파도 타는 서퍼(중급)": "💬 기본적 분석과 기술적 분석을 병행하여 자신만의 투자 전략을 고도화해 보세요.",
+            "시장 항해자(고급)": "💬 리스크 관리와 포트폴리오 다각화를 통해 고도화된 전략을 실행해 보세요."
         }
         guide_text = level_guides.get(final_level, "")
         st.markdown(
