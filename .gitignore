@@ -238,5 +238,7 @@ $RECYCLE.BIN/
 data/*
 models/*
 **/.cache/
+service/fine_tuning/llama_factory/dataset/*
+!service/fine_tuning/llama_factory/dataset/.gitkeep
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
