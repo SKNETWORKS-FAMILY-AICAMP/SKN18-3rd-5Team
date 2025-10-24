@@ -10,8 +10,7 @@ finetuning_type: lora                                 # 미세조정 방식 (LoR
 
 # 데이터 설정
 dataset_dir: ./dataset                                # 학습 데이터 폴더 경로
-train_file: train.json                                # 학습용 JSON 파일
-test_file: test.json                                  # 검증용 JSON 파일
+dataset: llama_dataset                                # ✅ dataset_info.json 안에 정의된 데이터셋 이름
 cutoff_len: 1024                                      # 토큰 최대 길이
 
 # 학습 하이퍼파라미터
@@ -24,7 +23,7 @@ warmup_ratio: 0.03                                    # 워밍업 비율
 logging_steps: 10                                     # 로그 출력 주기
 
 # 저장 경로
-output_dir: ./service/fine_tuning/llama_factory/output_lora        # 학습 결과 저장 폴더
+output_dir: ./service/fine_tuning/llama_factory/output_lora  # 학습 결과 저장 폴더
 save_steps: 500                                       # 모델 저장 주기
 save_total_limit: 3                                   # 저장할 체크포인트 개수
 
