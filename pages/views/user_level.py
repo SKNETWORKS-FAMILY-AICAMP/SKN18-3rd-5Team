@@ -309,10 +309,10 @@ def _compute_final_level(question_results, correct_answers):
         default=-1
     )
     if highest_correct_rank == 2 and correct_answers >= 3:
-        return "파도 관찰자(고급)", "🚀", "#F44336"
+        return "시장 항해자(고급)", "🚀", "#F44336"
     if highest_correct_rank >= 1 and correct_answers >= 2:
         return "파도 타는 서퍼(중급)", "⚡", "#FF9800"
-    return "시장 항해자(초급)", "🔰", "#4CAF50"
+    return "파도 관찰자(초급)", "🔰", "#4CAF50"
 
 
 def _reset_user_level_state():
@@ -409,9 +409,9 @@ def render_user_level():
         
         # 난이도별 색상과 아이콘
         difficulty_colors = {
-            "🌊파도 관찰자(초급)": ("🌊", "#4CAF50"),
-            "🚤파도 타는 서퍼(중급)": ("🚤", "#FF9800"), 
-            "🛳️시장 항해자(고급)": ("🛳️", "#F44336")
+            "초급": ("🌊", "#4CAF50"),
+            "중급": ("🚤", "#FF9800"),
+            "고급": ("🛳️", "#F44336"),
         }
         
         icon, color = difficulty_colors.get(current_question["difficulty"], ("❓", "#9E9E9E"))
