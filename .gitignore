@@ -232,6 +232,10 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+#Sqlite3
+*.db
+*.sqlite3
+db.sqlite3
 
 #ETC
 .history
