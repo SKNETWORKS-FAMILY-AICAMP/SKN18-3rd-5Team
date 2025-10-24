@@ -1,31 +1,36 @@
-# from typing import Optional, List, Dict
-# import re
-import os
+# service/llm_client.py
+import os, sys
 from typing import Optional, List, Dict
 from dotenv import load_dotenv
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-# (LoRA 어댑터 자동 로딩)
-from peft import AutoPeftModelForCausalLM
+from peft import PeftModel  # ← 핵심: AutoPeft 대신 명시 적용
 
 load_dotenv()
 
-# ======= 환경 변수 =======
-# 예) FinGPT LoRA:
-#   HF_REPO_ID="FinGPT/fingpt-mt_llama2-7b_lora"
-#   HF_BASE_MODEL="meta-llama/Llama-2-7b-hf"
-HF_REPO_ID   = os.getenv("HF_REPO_ID", "FinGPT/fingpt-mt_llama2-7b_lora")
-HF_BASE_MODEL= os.getenv("HF_BASE_MODEL", "meta-llama/Llama-2-7b-hf")  # LoRA일 때 필수
-HF_DEVICE_MAP= os.getenv("HF_DEVICE_MAP", "auto")    # "auto" | "cuda" | "cpu"
-HF_DTYPE     = os.getenv("HF_DTYPE", "bfloat16")     # "float16" | "bfloat16" | "float32"
-HF_4BIT      = os.getenv("HF_4BIT", "false").lower() == "true"
-HF_TRUST     = os.getenv("HF_TRUST_REMOTE_CODE", "false").lower() == "true"
-HF_TOKEN     = os.getenv("HUGGINGFACE_API_KEY")
+# 오프라인 강제(사전 다운로드 했으므로 안전)
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_HUB_OFFLINE"] = "1"
+
+HF_REPO_ID    = os.getenv("HF_REPO_ID", "./models/adapters/fingpt-mt_llama2-7b_lora")  # LoRA 경로(로컬)
+HF_BASE_MODEL = os.getenv("HF_BASE_MODEL", "./models/base/Llama-2-7b-hf")              # 베이스 경로(로컬)
+HF_DEVICE_MAP = os.getenv("HF_DEVICE_MAP", "auto")     # "auto" | "cuda" | "cpu"
+HF_DTYPE      = os.getenv("HF_DTYPE", "bfloat16")      # "float16" | "bfloat16" | "float32"
+HF_4BIT       = os.getenv("HF_4BIT", "false").lower() == "true"
+HF_TRUST      = os.getenv("HF_TRUST_REMOTE_CODE", "false").lower() == "true"
+HF_TOKEN      = os.getenv("HUGGINGFACE_HUB_TOKEN")     # 오프라인이면 없어도 됨
+
+print("[LLM] HF_REPO_ID =", HF_REPO_ID)
+print("[LLM] HF_BASE_MODEL =", HF_BASE_MODEL)
+print("[LLM] CWD =", os.getcwd(), file=sys.stderr)
 
 _tokenizer = None
 _model = None
 
 def _torch_dtype():
+    # CPU면 float32로 강제 (bf16/float16 미지원 환경 방지)
+    if HF_DEVICE_MAP == "cpu":
+        return torch.float32
     return {
         "float16": torch.float16,
         "bfloat16": torch.bfloat16,
@@ -33,20 +38,17 @@ def _torch_dtype():
     }.get(HF_DTYPE, torch.bfloat16)
 
 def _hf_auth_kwargs() -> Dict[str, str]:
-    if not HF_TOKEN:
-        return {}
-    return {"token": HF_TOKEN}
+    return {"token": HF_TOKEN} if HF_TOKEN else {}
 
-def _load_tokenizer(name: str):
-    auth_kwargs = _hf_auth_kwargs()
+def _load_tokenizer(path_or_id: str):
     return AutoTokenizer.from_pretrained(
-        name,
+        path_or_id,
         use_fast=True,
         trust_remote_code=HF_TRUST,
-        **auth_kwargs,
+        **_hf_auth_kwargs(),
     )
 
-def _load_model(repo_id: str, is_lora: bool):
+def _load_model_lora(base_path: str, lora_path: str):
     kwargs = {}
     if HF_4BIT:
         from transformers import BitsAndBytesConfig
@@ -56,76 +58,59 @@ def _load_model(repo_id: str, is_lora: bool):
         kwargs["torch_dtype"] = _torch_dtype()
         kwargs["device_map"] = HF_DEVICE_MAP
 
-    auth_kwargs = _hf_auth_kwargs()
-    if is_lora:
-        # LoRA 어댑터: base model 로드 후 어댑터 머지/로딩
-        base = HF_BASE_MODEL
-        if not base:
-            raise ValueError("LoRA 어댑터를 쓰려면 HF_BASE_MODEL 환경변수를 지정하세요.")
-        # 토크나이저는 베이스에서
-        tok = _load_tokenizer(base)
-        # 어댑터 자동 로드
-        mdl = AutoPeftModelForCausalLM.from_pretrained(
-            repo_id,
-            trust_remote_code=HF_TRUST,
-            **auth_kwargs,
-            **kwargs,
-        )
-        mdl.eval()
-        return tok, mdl
-    else:
-        tok = _load_tokenizer(repo_id)
-        mdl = AutoModelForCausalLM.from_pretrained(
-            repo_id,
-            trust_remote_code=HF_TRUST,
-            **auth_kwargs,
-            **kwargs,
-        )
-        mdl.eval()
-        return tok, mdl
-
-def _is_lora_repo(repo_id: str) -> bool:
-    # 매우 단순한 휴리스틱: 'lora' / 'adapter' 키워드 포함 시 LoRA 가정
-    # (정확히 하려면 hf_hub로 파일 리스트 조회 후 adapter_config.json 존재 확인)
-    key = repo_id.lower()
-    return ("lora" in key) or ("adapter" in key)
+    # 1) 베이스 모델(로컬 경로) 로드
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_path,
+        trust_remote_code=HF_TRUST,
+        low_cpu_mem_usage=True,             # ← 추가
+        **_hf_auth_kwargs(),
+        **kwargs,
+    )
+    # 2) 어댑터(로컬 경로) 적용
+    model = PeftModel.from_pretrained(
+        base_model,
+        lora_path,
+        **_hf_auth_kwargs(),
+    )
+    model.eval()
+    return model
 
 def _load():
     global _tokenizer, _model
     if _tokenizer is not None and _model is not None:
         return _tokenizer, _model
-    is_lora = _is_lora_repo(HF_REPO_ID)
-    _tokenizer, _model = _load_model(HF_REPO_ID, is_lora=is_lora)
+
+    # 로컬 경로 사용 전제(B 방식): tokenizer는 베이스에서 로드
+    _tokenizer = _load_tokenizer(HF_BASE_MODEL)
+    _model = _load_model_lora(HF_BASE_MODEL, HF_REPO_ID)
+
+    # pad_token 없으면 eos로 보정
+    if _tokenizer.pad_token_id is None and _tokenizer.eos_token_id is not None:
+        _tokenizer.pad_token = _tokenizer.eos_token
+
     return _tokenizer, _model
 
 def _apply_chat_template_safe(tokenizer, messages) -> torch.Tensor:
-    # 지원 모델은 chat_template 사용
     try:
         return tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, return_tensors="pt"
         )
     except Exception:
-        # 템플릿이 없으면 Llama2 스타일로 포맷팅
         system = next((m["content"] for m in messages if m["role"]=="system"), "")
         user   = next((m["content"] for m in messages if m["role"]=="user"), "")
         prompt = f"""[INST] <<SYS>>
-        {system.strip()}
-        <</SYS>>
+{system.strip()}
+<</SYS>>
 
-        {user.strip()} [/INST]
-        """
+{user.strip()} [/INST]
+"""
         return tokenizer(prompt, return_tensors="pt").input_ids
 
 def chat(system: str, user: str, max_tokens: int = 512) -> str:
     """
     LangGraph Generate 노드에서 호출되는 함수.
     system: 시스템 규칙/역할 (레벨별 템플릿 포함)
-    user:   사용자 질문 + 컨텍스트
-    max_tokens: 생성할 텍스트(답변)의 최대 토큰 수.
-        - 이 값은 "최대 생성 토큰"을 의미하며, 모델이 한번에 얼마나 긴 출력을 생성할지 결정
-        - 기본값 512는 실험적으로 적당히 "중간 길이 답변"을 커버할 정도로 설정
-        - 길이에 엄격한 제한이 필요한 경우 컨텍스트별로 조정 가능
-        - (참고: 입력 prompt와 생성 답변 토큰 합계는 모델 한계 context window를 초과하면 안 됨)
+    user  : 사용자 질문 + 컨텍스트
     """
     tokenizer, model = _load()
 
@@ -137,12 +122,13 @@ def chat(system: str, user: str, max_tokens: int = 512) -> str:
 
     gen_out = model.generate(
         input_ids=input_ids,
-        max_new_tokens=max_tokens,
+        max_new_tokens=min(max_tokens, 128),  # ← 128로 캡
         do_sample=True,
         temperature=0.7,
         top_p=0.9,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
+        use_cache=False,                      # ← KV-cache OFF (메모리 급감)
     )
     output_ids = gen_out[0][input_ids.shape[-1]:]
     text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()

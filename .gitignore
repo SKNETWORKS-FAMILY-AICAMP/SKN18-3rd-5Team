@@ -232,10 +232,11 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-# history
-.history 
 
-# Data
+#ETC
+.history
 data/*
+# models/*
+**/.cache/
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
