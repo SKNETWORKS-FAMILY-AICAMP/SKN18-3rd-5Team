@@ -136,7 +136,8 @@ def render_sidebar():
 
     """공통 사이드바"""
     with st.sidebar:
-        st.image("data/StockBuddy3.png")
+        st.image("assets/img/StockBuddy3.png")
+        # st.image("data/StockBuddy3.png")
         st.subheader("스톡버디와 함께 투자를 이야기해보세요 💬")
 
         st.markdown("---")
