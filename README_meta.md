@@ -4,8 +4,7 @@
 --- 
 
 ## 프로젝트명
-**공시 문서 및 애널리스트 분석 리포트 기반의 투자 Q&A 시스템**
-- 사용자의 투자 지식 수준 인식 로직으로 적응형 시스템 (개인화)
+공시 문서 기반의 투자 Q&A 시스템 ??
 
 ---
 
@@ -76,17 +75,10 @@ API (XML)
 
 ## [Fine-Tuning]
 
-### 1. 목적
-- 증권사 애널리스트 리포트 요약/코멘트를 이용해서 리스크/밸류에이션/가이던스 해석 포함한 "공시 해석 지능" 학습
-
-### 2. Llama Factory
+### 1. Llama Factory
 - 참고 : [SK Tech 블로그](https://devocean.sk.com/blog/techBoardDetail.do?ID=166098)
-- 정의 :  
-  LLaMA Factory는 Meta의 LLaMA 및 다양한 오픈소스 LLM(대형언어모델) 계열 모델을 쉽게 파인튜닝, 프롬프트 미세조정(Instruction Tuning), 채팅/웹UI 배포까지 지원하는 올인원 오픈소스 라이브러리입니다.  
-  기존 HuggingFace Transformers 기반이며, 다양한 미세조정 방법(LoRA, QLoRA, P-Tuning 등), 데이터셋 포맷 지원, Web UI(그라디오 기반)로 GUI 환경에서 손쉽게 커스텀 학습/테스트/배포를 할 수 있습니다.  
-  즉, **LLM 모델 파인튜닝과 운영**을 코드 몇 줄, 혹은 클릭만으로 진행할 수 있게 돕는 학습·서빙용 **프레임워크**입니다.
 
-#### [설치]
+#### 설치
 
 1. runpod (도커 필요 없음)
    - SSH 설정
@@ -172,12 +164,12 @@ API (XML)
         ```
 
 4. 로컬 데이터셋 복사
-   - 로컬 터미널 창으로 접속 후 실행
+   - 로컬 터미널 창으로 접속
         ```bash
         # 형식
         scp -P <포트번호> -i ~/.ssh/id_ed25519 {파일명} root@<RunPod_IP>:/workspace/LLaMA-Factory/data/
         # 예시
-        scp -P 11969 -i ~/.ssh/id_ed25519 ko_civil_service_inst.json root@66.92.198.178:/workspace/LLaMA-Factory/data/
+        scp -P 11969 -i ~/.ssh/id_ed25519 clean_datajson root@66.92.198.178:/workspace/LLaMA-Factory/data/
         ```
     - 런팟 터미널 확인
         ```bash
@@ -367,31 +359,5 @@ API (XML)
         # 분할 저장 확인
         ls -al output/Meta-Llama-3-8B-Instruct/
         ```
-
-10. HuggingFace 모델 업로드
-    - 강의 자료 참고
-
-
-
----
-
-## [랭그래프]
-
-  - 전체 연동 개념도
-    ```text
-    [ Streamlit UI ]
-        ↓ (user_level session_state)
-    [ LangGraph App ]
-        ↓
-    [ Router Node ]
-    └── 레벨별 파라미터 (top_k, context_len)
-    [ Generate Node ]
-    └── PROMPT_TEMPLATES[level] 기반 시스템/유저 프롬프트 구성
-        ↓
-    [ FT 모델 + pgvector 검색 ]
-        ↓
-    [ 결과 + ref 반환 ]
-    ```
-  - 참고 : ![[graph/readme.md]]
 
 

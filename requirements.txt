@@ -16,12 +16,7 @@ sqlalchemy>=1.4.0
 # 벡터 데이터베이스 및 임베딩 (가벼운 버전)
 pgvector>=0.2.0
 sentence-transformers>=2.0.0
-numpy==1.26.4 # PyTßorch 이슈로 버전 고정
-
-# Transform Pipeline 의존성
-tiktoken>=0.5.0  # 토큰 계산 (chunker.py)
-langchain>=0.1.0  # 텍스트 분할 (normalizer.py)
-langchain-text-splitters>=0.0.1  # RecursiveCharacterTextSplitter
+numpy>=1.21.0
 
 # 데이터 처리 (가벼운 버전)
 pandas>=1.5.0
@@ -36,24 +31,3 @@ beautifulsoup4>=4.12.3
 
 # 신한증권 데이터 크롤링 시 필요한 패키지
 playwright==1.55.0
-
-# LangChain 패키지
-langchain==0.3.26 # LangChain 메인 패키지
-langchain-core==0.3.74 # LangChain 코어 기능
-langchain-community==0.3.27 # LangChain 커뮤니티 확장
-langchain-experimental==0.3.4 # 새로운 기능을 미리 사용해볼 수 있는 패키지
-langsmith==0.4.14 # LangChain 앱 디버깅, 테스트, 모니터링 도구
-langgraph==0.2.61 # 복잡한 AI 워크플로우를 그래프로 만드는 도구
-
-# LangGraph 패키지
-asyncpg==0.30.0 # 고성능 PostgreSQL 비동기 드라이버 (빠른 비동기 쿼리 지원)
-psycopg[binary, pool] # psycopg2-binary보다 더 다양한 기능을 위한 psycopg (바이너리+연결 풀 옵션)
-tiktoken==0.12.0 # OpenAI/LLM 토크나이저 (토큰 카운트 및 분할에 사용)
-transformers==4.57.1 # 허깅페이스 Transformers 라이브러리 (LLM/언어모델 내장)
-PyYAML==6.0.3 # YAML 파일 파싱 (구성 또는 설정파일 관리에 사용)
-# llm
-accelerate==1.11.0          # 분산 학습, mixed precision 등 최신 트레이닝 환경 지원
-torch>=2.2                  # PyTorch: LLM 기반 모델 실행 및 트레이닝 프레임워크
-sentencepiece==0.2.1        # 일부 토크나이저에서 사용하는 SentencePiece 라이브러리 (텍스트 전처리)
-peft>=0.11                  # Parameter-Efficient Fine-Tuning (LLM 파인튜닝용) 패키지
-bitsandbytes==0.42.0        # 4bit/8bit LLM 로딩(압축/최적화된 파라미터) 지원

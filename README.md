@@ -30,10 +30,9 @@
 ```
 
 ## 실행 방법
-- HuggingFace에서 모델 미리 다운로드 실행
+
 ```bash
 uv pip install -r requirements.txt
-python service/llm/setup_download.py
 streamlit run app.py
 ```
 ##
