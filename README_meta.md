@@ -127,6 +127,11 @@ API (XML)
         pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
         pip install --no-deps xformers
         pip install -e .[metrics,bitsandbytes,qwen]
+
+        # 폴더 생성 
+        pwd 
+        mkdir output
+        mkdir config
         ```
     - 웹 접속 확인
         ```bash
