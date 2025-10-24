@@ -233,15 +233,10 @@ $RECYCLE.BIN/
 *.lnk
 
 
-<<<<<<< HEAD
-# Data
-data/*
-=======
 #ETC
 .history
 data/*
-# models/*
+models/*
 **/.cache/
->>>>>>> a771d2b33a79cfb1e5c5fa1913907c9927df7e68
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python
