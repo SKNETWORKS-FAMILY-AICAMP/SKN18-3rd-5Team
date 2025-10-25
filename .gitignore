@@ -240,7 +240,8 @@ db.sqlite3
 #ETC
 .history
 data/*
-models/*
+models/adapters/*
+models/base/*
 **/.cache/
 
 service/fine_tuning/llama_factory/dataset/*

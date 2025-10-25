@@ -5,4 +5,14 @@ secondaryBackgroundColor="#FFFFFF"
 textColor="#000000"
 primaryColor="#ffffff"
 
+[server]
+# 런팟용 설정
+port = 8501
+address = "localhost"
+enableCORS = false
+enableXsrfProtection = false
+enableWebsocketCompression = false
+headless = false
 
+[browser]
+gatherUsageStats = false
