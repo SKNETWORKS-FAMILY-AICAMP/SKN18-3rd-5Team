@@ -24,9 +24,15 @@ import time
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from service.rag.models.config import EmbeddingModelType
-from service.rag.models.encoder import EmbeddingEncoder
-from service.rag.vectorstore.pgvector_store import PgVectorStore
+from service.rag_jsonl.models.config import EmbeddingModelType
+from service.rag_jsonl.models.encoder import EmbeddingEncoder
+from service.rag_jsonl.vectorstore.pgvector_store import PgVectorStore
+from service.rag_jsonl.utils.error_handler import (
+    BatchProcessingErrorHandler,
+    ErrorHandler,
+    ErrorContext
+)
+from config.vector_database import get_vector_db_config
 
 # 로깅 설정
 logging.basicConfig(
@@ -37,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingGenerator:
-    """임베딩 생성 및 저장"""
+    """임베딩 생성 및 저장 (개선된 버전)"""
     
     def __init__(
         self,
@@ -48,14 +54,22 @@ class EmbeddingGenerator:
         """
         Args:
             model_type: 임베딩 모델 타입
-            db_config: 데이터베이스 연결 설정
+            db_config: 데이터베이스 연결 설정 (None이면 중앙화된 설정 사용)
             device: 디바이스 ('cuda', 'cpu', None)
         """
         self.model_type = model_type
         self.encoder = EmbeddingEncoder(model_type, device)
         self.vector_store = PgVectorStore(db_config)
         
+        # 에러 핸들러 초기화
+        self.error_handler = ErrorHandler()
+        
+        # 중앙화된 설정
+        self.config = get_vector_db_config()
+        
         logger.info(f"임베딩 생성기 초기화: {self.encoder.get_display_name()}")
+        logger.info(f"모델 차원: {self.config.get_dimension(model_type)}")
+        logger.info(f"테이블명: {self.config.get_table_name(model_type)}")
     
     def generate_for_all_chunks(
         self,
@@ -136,77 +150,93 @@ class EmbeddingGenerator:
         limit: Optional[int], 
         skip_existing: bool
     ) -> List[Dict[str, Any]]:
-        """처리할 청크 목록 가져오기"""
+        """처리할 청크 목록 가져오기 (개선된 버전)"""
         
-        # 모델별 임베딩 테이블 매핑
-        embedding_table = self.vector_store.MODEL_TABLE_MAP.get(self.model_type)
-        
-        if not embedding_table:
-            raise ValueError(f"지원하지 않는 모델: {self.model_type}")
-        
-        # SQL 쿼리 작성
-        if skip_existing:
-            # 아직 임베딩이 없는 청크만
+        try:
+            if skip_existing:
+                # 아직 임베딩이 없는 청크만 조회
+                chunk_ids = self.vector_store.get_chunk_ids(
+                    limit=limit,
+                    model_type=self.model_type
+                )
+            else:
+                # 모든 청크 조회
+                chunk_ids = self.vector_store.get_chunk_ids(limit=limit)
+            
+            if not chunk_ids:
+                return []
+            
+            # 청크 상세 정보 조회
+            cursor = self.vector_store._get_cursor()
+            placeholders = ','.join(['%s'] * len(chunk_ids))
             sql = f"""
-                SELECT c.id, c.chunk_id, c.natural_text, c.chunk_type, c.metadata
-                FROM chunks c
-                LEFT JOIN {embedding_table} e ON c.chunk_id = e.chunk_id
-                WHERE e.chunk_id IS NULL
-                  AND c.natural_text IS NOT NULL
-                  AND c.natural_text != ''
-                ORDER BY c.id
-            """
-        else:
-            # 모든 청크
-            sql = """
                 SELECT id, chunk_id, natural_text, chunk_type, metadata
                 FROM chunks
-                WHERE natural_text IS NOT NULL
+                WHERE id IN ({placeholders})
+                  AND natural_text IS NOT NULL
                   AND natural_text != ''
                 ORDER BY id
             """
-        
-        if limit:
-            sql += f" LIMIT {limit}"
-        
-        # 실행
-        cursor = self.vector_store.conn.cursor()
-        cursor.execute(sql)
-        
-        chunks = []
-        for row in cursor.fetchall():
-            chunks.append({
-                'id': row[0],
-                'chunk_id': row[1],
-                'natural_text': row[2],
-                'chunk_type': row[3],
-                'metadata': row[4]
-            })
-        
-        cursor.close()
-        
-        return chunks
+            
+            cursor.execute(sql, chunk_ids)
+            
+            chunks = []
+            for row in cursor.fetchall():
+                chunks.append({
+                    'id': row['id'],
+                    'chunk_id': row['chunk_id'],
+                    'natural_text': row['natural_text'],
+                    'chunk_type': row['chunk_type'],
+                    'metadata': row['metadata']
+                })
+            
+            cursor.close()
+            return chunks
+            
+        except Exception as e:
+            logger.error(f"청크 조회 실패: {e}")
+            return []
     
     def _process_batch(self, batch: List[Dict[str, Any]]):
-        """배치 처리"""
+        """배치 처리 (개선된 버전)"""
         
-        # 1. 텍스트 추출
-        texts = [chunk['natural_text'] for chunk in batch]
-        chunk_ids = [chunk['id'] for chunk in batch]
-        
-        # 2. 임베딩 생성
-        embeddings = self.encoder.encode_batch(
-            texts,
-            is_query=False,  # document 임베딩
-            show_progress=False
+        context = self.error_handler.create_context(
+            "process_batch",
+            batch_id=hash(str(batch[0]['id']) if batch else 0) % 10000,
+            model_type=self.model_type.value,
+            additional_info={'batch_size': len(batch)}
         )
         
-        # 3. 데이터베이스에 저장
-        self.vector_store.insert_embeddings(
-            model_type=self.model_type,
-            chunk_ids=chunk_ids,
-            embeddings=embeddings
-        )
+        try:
+            # 1. 텍스트 추출
+            texts = [chunk['natural_text'] for chunk in batch]
+            chunk_ids = [chunk['chunk_id'] for chunk in batch]  # chunk_id 사용
+            
+            # 2. 임베딩 생성
+            logger.debug(f"임베딩 생성 시작: {len(texts)}개 텍스트")
+            embeddings = self.encoder.encode_documents(
+                texts,
+                batch_size=len(texts),
+                show_progress=False
+            )
+            
+            # 3. 데이터베이스에 저장
+            logger.debug(f"임베딩 저장 시작: {len(embeddings)}개 벡터")
+            inserted_count = self.vector_store.insert_embeddings(
+                model_type=self.model_type,
+                chunk_ids=chunk_ids,
+                embeddings=embeddings
+            )
+            
+            logger.debug(f"배치 처리 완료: {inserted_count}개 삽입")
+            
+        except Exception as e:
+            logger.error(f"배치 처리 실패: {e}")
+            # 에러 처리
+            error_result = BatchProcessingErrorHandler.handle_batch_error(
+                e, context, batch
+            )
+            raise Exception(f"배치 처리 실패: {error_result['error_message']}")
 
 
 def main():
@@ -289,7 +319,7 @@ def main():
     
     parser.add_argument(
         "--db-name",
-        default="postgres",
+        default="skn_project",
         help="데이터베이스 이름"
     )
     
@@ -301,7 +331,7 @@ def main():
     
     parser.add_argument(
         "--db-password",
-        default="postgres",
+        default="post1234",
         help="데이터베이스 비밀번호"
     )
     
@@ -321,14 +351,16 @@ def main():
         "fine5": EmbeddingModelType.FINE5_FINANCE
     }
     
-    # DB 설정
-    db_config = {
-        'host': args.db_host,
-        'port': args.db_port,
-        'database': args.db_name,
-        'user': args.db_user,
-        'password': args.db_password
-    }
+    # DB 설정 (중앙화된 설정 사용)
+    from config.vector_database import DatabaseConfig
+    
+    db_config = DatabaseConfig(
+        host=args.db_host,
+        port=args.db_port,
+        database=args.db_name,
+        user=args.db_user,
+        password=args.db_password
+    ).to_dict()
     
     try:
         # 모델별 처리

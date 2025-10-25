@@ -65,6 +65,16 @@ class EmbeddingModel:
             if hf_token:
                 logger.info("Using HuggingFace token from environment")
 
+            # FinE5 모델의 경우 LoRA 가중치 로드 시도
+            if self.model_type == EmbeddingModelType.FINE5_FINANCE:
+                try:
+                    logger.info("FinE5 LoRA 모델 로드 시도...")
+                    self._load_fine5_lora(hf_token)
+                    return
+                except Exception as e:
+                    logger.warning(f"FinE5 LoRA 로드 실패: {e}")
+                    logger.info("일반 FinE5 모델 로드 시도...")
+
             # Sentence Transformers로 로드 시도
             try:
                 model_kwargs = {
@@ -120,6 +130,51 @@ class EmbeddingModel:
 
         except Exception as e:
             logger.error(f"Failed to load model {self.config.model_name}: {e}")
+            raise
+
+    def _load_fine5_lora(self, hf_token: Optional[str] = None):
+        """FinE5 LoRA 모델 로드"""
+        try:
+            # PEFT 라이브러리 import
+            from peft import PeftModel, PeftConfig
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            
+            # LoRA 모델 경로 설정 (로컬 경로 또는 HuggingFace Hub)
+            lora_model_path = "FinanceMTEB/FinE5"  # 또는 로컬 경로
+            
+            logger.info(f"FinE5 LoRA 모델 로드 중: {lora_model_path}")
+            
+            # LoRA 설정 로드
+            peft_config = PeftConfig.from_pretrained(lora_model_path, token=hf_token)
+            
+            # 베이스 모델 로드
+            base_model = AutoModelForCausalLM.from_pretrained(
+                peft_config.base_model_name_or_path,
+                trust_remote_code=True,
+                token=hf_token,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+            )
+            
+            # LoRA 가중치 로드
+            self.model = PeftModel.from_pretrained(base_model, lora_model_path, token=hf_token)
+            self.model = self.model.to(self.device)
+            self.model.eval()
+            
+            # 토크나이저 로드
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                peft_config.base_model_name_or_path,
+                trust_remote_code=True,
+                token=hf_token
+            )
+            
+            logger.info(f"FinE5 LoRA 모델 로드 완료: {lora_model_path}")
+            self._is_loaded = True
+            
+        except ImportError:
+            logger.error("PEFT 라이브러리가 설치되지 않았습니다. 'pip install peft'로 설치해주세요.")
+            raise
+        except Exception as e:
+            logger.error(f"FinE5 LoRA 모델 로드 실패: {e}")
             raise
 
     def unload(self):
