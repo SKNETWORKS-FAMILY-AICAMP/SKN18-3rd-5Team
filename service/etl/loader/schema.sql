@@ -373,3 +373,132 @@ SELECT
     pg_size_pretty(pg_total_relation_size('vector_db.embeddings_kakaobank')) as kakao_size,
     pg_size_pretty(pg_total_relation_size('vector_db.embeddings_fine5')) as fine5_size;
 */
+
+-- ============================================================================
+-- 11. RAG 평가 결과 테이블 (RAGAs)
+-- ============================================================================
+-- RAG 시스템의 성능을 추적하고 모델 비교를 위한 평가 결과 저장
+
+CREATE TABLE IF NOT EXISTS vector_db.evaluation_results (
+    eval_id SERIAL PRIMARY KEY,
+    
+    -- 평가 메타데이터
+    eval_timestamp TIMESTAMP DEFAULT NOW(),
+    model_name VARCHAR(100) NOT NULL,           -- 모델 이름 (e5, kakaobank, fine5)
+    query_id VARCHAR(20),                       -- 쿼리 ID (Q001, Q002, ...)
+    query_text TEXT NOT NULL,                   -- 실제 쿼리
+    query_type VARCHAR(50),                     -- 쿼리 타입 (factual, analytical, etc.)
+    difficulty VARCHAR(20),                     -- 난이도 (easy, medium, hard)
+    
+    -- 검색 품질 메트릭 (Retrieval Metrics)
+    recall_at_k FLOAT,                          -- Recall@K
+    precision_at_k FLOAT,                       -- Precision@K
+    mrr FLOAT,                                  -- Mean Reciprocal Rank
+    ndcg_at_k FLOAT,                            -- Normalized Discounted Cumulative Gain
+    avg_similarity FLOAT,                       -- 평균 유사도
+    keyword_coverage FLOAT,                     -- 키워드 커버리지
+    
+    -- 생성 품질 메트릭 (Generation Metrics, 선택적)
+    exact_match BOOLEAN,                        -- 정확 일치 여부
+    keyword_f1 FLOAT,                           -- 키워드 F1 점수
+    keyword_precision FLOAT,                    -- 키워드 Precision
+    keyword_recall FLOAT,                       -- 키워드 Recall
+    contains_ground_truth BOOLEAN,              -- Ground Truth 포함 여부
+    
+    -- 전체 점수
+    overall_score FLOAT,                        -- 0-100점
+    
+    -- 성능 메트릭
+    response_time_ms FLOAT,                     -- 응답 시간 (밀리초)
+    retrieved_docs_count INTEGER,               -- 검색된 문서 수
+    
+    -- 오류 정보
+    error_message TEXT,                         -- 오류 메시지 (있는 경우)
+    
+    -- 인덱스
+    CONSTRAINT evaluation_results_model_query_timestamp 
+        UNIQUE(model_name, query_id, eval_timestamp)
+);
+
+-- 인덱스 생성
+CREATE INDEX IF NOT EXISTS idx_evaluation_results_model ON vector_db.evaluation_results(model_name);
+CREATE INDEX IF NOT EXISTS idx_evaluation_results_query_id ON vector_db.evaluation_results(query_id);
+CREATE INDEX IF NOT EXISTS idx_evaluation_results_timestamp ON vector_db.evaluation_results(eval_timestamp);
+CREATE INDEX IF NOT EXISTS idx_evaluation_results_overall_score ON vector_db.evaluation_results(overall_score);
+
+-- ============================================================================
+-- 12. 평가 결과 조회 쿼리 예시
+-- ============================================================================
+/*
+-- 12.1 모델별 평균 성능 비교
+SELECT 
+    model_name,
+    COUNT(*) as eval_count,
+    AVG(overall_score) as avg_score,
+    AVG(recall_at_k) as avg_recall,
+    AVG(precision_at_k) as avg_precision,
+    AVG(response_time_ms) as avg_response_time
+FROM vector_db.evaluation_results
+WHERE eval_timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY model_name
+ORDER BY avg_score DESC;
+
+-- 12.2 난이도별 성능
+SELECT 
+    model_name,
+    difficulty,
+    AVG(overall_score) as avg_score,
+    COUNT(*) as query_count
+FROM vector_db.evaluation_results
+WHERE eval_timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY model_name, difficulty
+ORDER BY model_name, difficulty;
+
+-- 12.3 쿼리 타입별 성능
+SELECT 
+    model_name,
+    query_type,
+    AVG(overall_score) as avg_score,
+    AVG(recall_at_k) as avg_recall
+FROM vector_db.evaluation_results
+WHERE eval_timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY model_name, query_type
+ORDER BY model_name, query_type;
+
+-- 12.4 성능 추이 (시간별)
+SELECT 
+    DATE(eval_timestamp) as eval_date,
+    model_name,
+    AVG(overall_score) as avg_score,
+    AVG(response_time_ms) as avg_response_time
+FROM vector_db.evaluation_results
+WHERE eval_timestamp >= NOW() - INTERVAL '90 days'
+GROUP BY DATE(eval_timestamp), model_name
+ORDER BY eval_date DESC, model_name;
+
+-- 12.5 실패한 쿼리 분석
+SELECT 
+    query_id,
+    query_text,
+    model_name,
+    overall_score,
+    error_message,
+    eval_timestamp
+FROM vector_db.evaluation_results
+WHERE overall_score < 50 OR error_message IS NOT NULL
+ORDER BY eval_timestamp DESC
+LIMIT 20;
+
+-- 12.6 최고 성능 쿼리
+SELECT 
+    query_id,
+    query_text,
+    model_name,
+    overall_score,
+    recall_at_k,
+    response_time_ms
+FROM vector_db.evaluation_results
+WHERE overall_score >= 90
+ORDER BY overall_score DESC, response_time_ms ASC
+LIMIT 10;
+*/

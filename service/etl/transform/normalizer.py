@@ -106,8 +106,15 @@ class DataNormalizer:
                 if not has_financial_data and chunk.get('natural_text'):
                     chunk['structured_data'] = self._reconstruct_structured_from_text(chunk['natural_text'])
         
+        # chunk_type 특수기호 정리
+        if chunk.get('chunk_type'):
+            chunk['chunk_type'] = self._clean_special_characters(chunk['chunk_type'])
+        
         # natural_text 개선
         if chunk.get('natural_text'):
+            # 먼저 특수기호 정리
+            chunk['natural_text'] = self._clean_special_characters(chunk['natural_text'])
+            
             chunk['natural_text'] = self._improve_natural_text(
                 chunk['natural_text'],
                 chunk.get('chunk_type'),
@@ -1179,6 +1186,96 @@ class DataNormalizer:
             return '-'.join(match.groups())
         
         return value
+    
+    def _clean_special_characters(self, text: str) -> str:
+        """특수기호 및 불필요한 문자 정리
+        
+        Args:
+            text: 정리할 텍스트
+            
+        Returns:
+            정리된 텍스트
+        """
+        if not text:
+            return text
+            
+        # 1. ¶ (문단 기호) 제거
+        text = text.replace('¶', '')
+        
+        # 2. 연속된 특수기호 정리 (예: ¶¶2) → 2)
+        text = re.sub(r'[¶]+(\d+)\)', r'\1)', text)
+        
+        # 3. 이모지 및 특수 기호 제거 (손가락 모양, 화살표 등)
+        # 유니코드 범위별 제거
+        text = re.sub(r'[\U0001F600-\U0001F64F]', '', text)  # 이모티콘
+        text = re.sub(r'[\U0001F300-\U0001F5FF]', '', text)  # 기타 기호 및 픽토그램
+        text = re.sub(r'[\U0001F680-\U0001F6FF]', '', text)  # 교통 및 지도 기호
+        text = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', text)  # 지역 표시 기호
+        text = re.sub(r'[\U00002600-\U000026FF]', '', text)  # 기타 기호
+        text = re.sub(r'[\U00002700-\U000027BF]', '', text)  # Dingbats
+        text = re.sub(r'[\U0001F900-\U0001F9FF]', '', text)  # 추가 기호 및 픽토그램
+        text = re.sub(r'[\U0001FA70-\U0001FAFF]', '', text)  # 기호 및 픽토그램 확장-A
+        
+        # 4. 일반적인 특수문자 제거 (유지할 것: 한글, 영문, 숫자, 공백, 기본 구두점)
+        # 유지할 문자: 한글, 영문, 숫자, 공백, 기본 구두점 (.,;:!?()-)
+        text = re.sub(r'[^\w\s.,;:!?()-]', '', text)
+        
+        # 5. 연속된 공백 정리
+        text = re.sub(r'\s+', ' ', text)
+        
+        # 6. 앞뒤 공백 제거
+        text = text.strip()
+        
+        return text
+    
+    def _detect_and_remove_unicode_symbols(self, text: str) -> str:
+        """유니코드 특수문자 감지 및 제거 (더 정교한 방법)
+        
+        Args:
+            text: 정리할 텍스트
+            
+        Returns:
+            특수문자가 제거된 텍스트
+        """
+        if not text:
+            return text
+            
+        # 유니코드 카테고리별로 특수문자 제거
+        cleaned_chars = []
+        
+        for char in text:
+            # 유니코드 카테고리 확인
+            category = unicodedata.category(char)
+            
+            # 허용할 카테고리들
+            allowed_categories = {
+                'Lu',  # 대문자
+                'Ll',  # 소문자  
+                'Lt',  # 제목 케이스 문자
+                'Lm',  # 수식 문자
+                'Lo',  # 기타 문자 (한글 포함)
+                'Nd',  # 숫자
+                'Nl',  # 문자 숫자
+                'No',  # 기타 숫자
+                'Zs',  # 공백 문자
+                'Pc',  # 연결 구두점
+                'Pd',  # 대시 구두점
+                'Ps',  # 여는 구두점
+                'Pe',  # 닫는 구두점
+                'Pi',  # 여는 따옴표
+                'Pf',  # 닫는 따옴표
+                'Po',  # 기타 구두점
+            }
+            
+            # 허용된 카테고리이거나 기본 구두점인 경우만 유지
+            if (category in allowed_categories or 
+                char in '.,;:!?()-'):
+                cleaned_chars.append(char)
+            # 공백으로 대체 (연속 공백은 나중에 정리)
+            else:
+                cleaned_chars.append(' ')
+        
+        return ''.join(cleaned_chars)
     
     def _normalize_number_value(self, value: str, key: str) -> str:
         """숫자 값 정규화 (단위 추가 + 검색 최적화)"""
