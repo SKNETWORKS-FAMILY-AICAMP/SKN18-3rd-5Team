@@ -165,7 +165,8 @@ class MetricsCalculator:
         
         found_keywords = set()
         for doc in docs:
-            text = doc.get('natural_text', '').lower()
+            # natural_text 또는 content 필드에서 텍스트 가져오기
+            text = doc.get('natural_text', doc.get('content', '')).lower()
             for keyword in expected_keywords:
                 if keyword.lower() in text:
                     found_keywords.add(keyword.lower())
@@ -183,7 +184,8 @@ class MetricsCalculator:
         
         relevant_docs = 0
         for doc in docs:
-            text = doc.get('natural_text', '').lower()
+            # natural_text 또는 content 필드에서 텍스트 가져오기
+            text = doc.get('natural_text', doc.get('content', '')).lower()
             if any(keyword.lower() in text for keyword in expected_keywords):
                 relevant_docs += 1
         
@@ -196,7 +198,8 @@ class MetricsCalculator:
     ) -> float:
         """MRR (Mean Reciprocal Rank) 계산"""
         for i, doc in enumerate(docs):
-            text = doc.get('natural_text', '').lower()
+            # natural_text 또는 content 필드에서 텍스트 가져오기
+            text = doc.get('natural_text', doc.get('content', '')).lower()
             if any(keyword.lower() in text for keyword in expected_keywords):
                 return 1.0 / (i + 1)
         return 0.0
@@ -213,7 +216,8 @@ class MetricsCalculator:
         # 각 문서의 관련성 점수 (0 또는 1)
         relevance_scores = []
         for doc in docs:
-            text = doc.get('natural_text', '').lower()
+            # natural_text 또는 content 필드에서 텍스트 가져오기
+            text = doc.get('natural_text', doc.get('content', '')).lower()
             score = 1.0 if any(keyword.lower() in text for keyword in expected_keywords) else 0.0
             relevance_scores.append(score)
         
@@ -239,7 +243,8 @@ class MetricsCalculator:
         if not expected_keywords:
             return 0.0
         
-        all_text = ' '.join([doc.get('natural_text', '') for doc in docs]).lower()
+        # natural_text 또는 content 필드에서 텍스트 가져오기
+        all_text = ' '.join([doc.get('natural_text', doc.get('content', '')) for doc in docs]).lower()
         found_keywords = sum(1 for keyword in expected_keywords 
                            if keyword.lower() in all_text)
         

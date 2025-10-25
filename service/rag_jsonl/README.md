@@ -35,6 +35,19 @@ python rag_jsonl_cli.py search --query "삼성전자 매출" --top-k 5
 python rag_jsonl_cli.py stats
 ```
 
+### 4. RAG 평가 실행
+
+```bash
+# 통합 RAG 평가 도구 실행
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3
+
+# 기업별 필터링 평가
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 5 --corp-filter "삼성전자"
+
+# 다른 임베딩 모델로 평가
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
+```
+
 ## 📊 시스템 아키텍처
 
 ```
@@ -75,7 +88,7 @@ python rag_jsonl_cli.py search --query "연구개발비" --corp-filter "삼성�
 python rag_jsonl_cli.py search --query "디지털 전환" --min-similarity 0.7
 
 # 다른 임베딩 모델 사용
-python rag_jsonl_cli.py search --query "ESG 경영" --model sentence-transformers/all-MiniLM-L6-v2
+python rag_jsonl_cli.py search --query "ESG 경영" --model kakaobank/kf-deberta-base
 
 # 검색 결과 저장
 python rag_jsonl_cli.py search --query "지속가능경영" --save-results
@@ -88,85 +101,84 @@ python rag_jsonl_cli.py search --query "지속가능경영" --save-results
 python rag_jsonl_cli.py stats
 
 # 특정 모델 통계
-python rag_jsonl_cli.py stats --model sentence-transformers/all-MiniLM-L6-v2
+python rag_jsonl_cli.py stats --model kakaobank/kf-deberta-base
 ```
 
-## 📈 성능 비교
+### RAG 평가 도구
 
-### 처리 시간
+통합된 RAG 평가 도구는 검색 성능을 자동으로 평가하고 메트릭을 계산합니다.
 
-| 단계        | Parquet 방식        | JSONL 방식     |
-| ----------- | ------------------- | -------------- |
-| 데이터 변환 | 30분-1시간          | 0분 (생략)     |
-| 데이터 로드 | 10-20분             | 30분-1시간     |
-| **총 시간** | **40분-1시간 20분** | **30분-1시간** |
-
-### 메모리 사용량
-
-| 단계            | Parquet 방식 | JSONL 방식 |
-| --------------- | ------------ | ---------- |
-| 변환 시         | 16GB+        | 0GB        |
-| 로드 시         | 8GB          | 8GB        |
-| **최대 사용량** | **16GB+**    | **8GB**    |
-
-## 🛠️ 환경 설정
-
-### 1. 의존성 설치
+#### 기본 사용법
 
 ```bash
-pip install psycopg2-binary sentence-transformers pandas numpy tqdm
+# 기본 평가 (5개 쿼리, Top-K=3)
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3
+
+# 더 많은 결과 검색
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 5
+
+# 최소 유사도 설정
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3 --min-similarity 0.7
+
+# 특정 기업만 평가
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3 --corp-filter "삼성전자"
 ```
 
-### 2. PostgreSQL + pgvector 설정
+#### 모델별 평가
 
 ```bash
-# PostgreSQL 설치 (Ubuntu/Debian)
-sudo apt-get install postgresql postgresql-contrib
+# 다국어 모델 (기본값)
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model multilingual-e5-small --top-k 3
 
-# pgvector 확장 설치
-sudo -u postgres psql -c "CREATE EXTENSION vector;"
+# 한국어 금융 특화 모델
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
+
+# 금융 도메인 최고 성능 모델
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model fine5 --top-k 3
 ```
 
-### 3. 환경변수 설정
+#### 평가 결과
 
-```bash
-# .env 파일 생성
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5432
-export POSTGRES_DB=rag_db
-export POSTGRES_USER=postgres
-export POSTGRES_PASSWORD=your_password
+평가 실행 시 다음 파일들이 생성됩니다:
+
+1. **`rag_evaluation_YYYYMMDD_HHMMSS.json`** - 메인 결과 파일
+
+   - 검색 결과 + 메트릭 계산 포함
+   - 각 쿼리별 상세 정보
+
+2. **`detailed_results_TIMESTAMP.json`** - 상세 결과 파일
+
+   - `overall_score`, `response_time_ms` 등 포함
+   - `complete_evaluation` 형식
+
+3. **`summary_report_TIMESTAMP.txt`** - 요약 리포트 파일
+   - 텍스트 형식의 요약 리포트
+   - 평균 성능 지표 + 개별 쿼리 결과
+
+#### 평가 메트릭
+
+- **Recall@K**: 예상 키워드가 검색된 문서에 포함된 비율
+- **Precision@K**: 상위 K개 문서 중 관련 문서 비율
+- **MRR**: 첫 번째 관련 문서의 순위 역수
+- **NDCG@K**: 정규화된 할인 누적 이득
+- **Keyword Coverage**: 키워드 커버리지
+- **평균 유사도**: 검색 결과의 평균 유사도
+
+#### 평가 결과 예시
+
 ```
+📊 평가 결과 요약:
+   - 총 쿼리 수: 5
+   - 모델: multilingual-e5-small
+   - 성공한 쿼리: 5/5
 
-## 📊 데이터베이스 스키마
-
-### chunks 테이블
-
-```sql
-CREATE TABLE chunks (
-    id SERIAL PRIMARY KEY,
-    chunk_id VARCHAR(255) UNIQUE NOT NULL,
-    doc_id VARCHAR(255),
-    chunk_type VARCHAR(50),
-    section_path TEXT,
-    natural_text TEXT,
-    structured_data JSONB,
-    metadata JSONB,
-    token_count INTEGER,
-    merged_count INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### embeddings\_{model_name} 테이블
-
-```sql
-CREATE TABLE embeddings_model_name (
-    chunk_id VARCHAR(255) PRIMARY KEY,
-    embedding vector(384),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id)
-);
+📈 평균 성능 지표:
+   - Recall@K: 0.7667
+   - Precision@K: 0.9333
+   - MRR: 1.0000
+   - NDCG@K: 1.0000
+   - Keyword Coverage: 0.7667
+   - 평균 유사도: 0.8902
 ```
 
 ## 🔍 검색 예시
@@ -205,7 +217,22 @@ python rag_jsonl_cli.py search --query "AI 반도체" --min-similarity 0.8
 
 ## 🎯 사용 사례
 
-### 1. 기업 정보 검색
+### 1. RAG 시스템 성능 평가
+
+```bash
+# 전체 시스템 성능 평가
+python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 5
+
+# 특정 기업의 검색 성능 평가
+python -m service.rag_jsonl.cli.rag_evaluation_tool --corp-filter "삼성전자" --top-k 3
+
+# 모델별 성능 비교
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model multilingual-e5-small --top-k 3
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
+python -m service.rag_jsonl.cli.rag_evaluation_tool --model fine5 --top-k 3
+```
+
+### 2. 기업 정보 검색
 
 ```bash
 # 특정 기업의 재무 정보
@@ -240,14 +267,14 @@ python rag_jsonl_cli.py search --query "디지털 혁신"
 ### 1. 임베딩 모델 변경
 
 ```bash
-# 한국어 특화 모델
-python rag_jsonl_cli.py search --query "한국어 쿼리" --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+# 다국어 모델 (기본값)
+python rag_jsonl_cli.py search --query "한국어 쿼리" --model intfloat/multilingual-e5-small
 
-# 영어 특화 모델
-python rag_jsonl_cli.py search --query "English query" --model sentence-transformers/all-MiniLM-L6-v2
+# 한국어 금융 특화 모델
+python rag_jsonl_cli.py search --query "금융 쿼리" --model kakaobank/kf-deberta-base
 
-# 고성능 모델 (느리지만 정확)
-python rag_jsonl_cli.py search --query "복잡한 쿼리" --model sentence-transformers/all-mpnet-base-v2
+# 금융 도메인 최고 성능 모델
+python rag_jsonl_cli.py search --query "복잡한 금융 쿼리" --model FinanceMTEB/FinE5
 ```
 
 ### 2. 배치 크기 조정
@@ -270,6 +297,8 @@ python loader_cli.py load data --jsonl-dir ../../../data/transform/final --batch
 ## 🚀 다음 단계
 
 1. **성능 최적화**: 인덱스 튜닝, 쿼리 최적화
-2. **모델 비교**: 여러 임베딩 모델의 성능 평가
-3. **UI 개발**: 웹 인터페이스 구축
-4. **API 서버**: REST API 서버 구축
+2. **모델 비교**: `rag_evaluation_tool`을 사용한 여러 임베딩 모델의 성능 평가
+3. **평가 확장**: 더 많은 평가 쿼리 추가 및 다양한 메트릭 구현
+4. **UI 개발**: 웹 인터페이스 구축
+5. **API 서버**: REST API 서버 구축
+6. **자동화**: CI/CD 파이프라인에 평가 도구 통합

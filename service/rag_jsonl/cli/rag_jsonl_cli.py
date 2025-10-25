@@ -123,6 +123,7 @@ class RAGJSONLSystem:
         """
         params.extend([embedding_str, top_k])
         
+        
         # 검색 실행
         cursor = self.conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute(query_sql, params)

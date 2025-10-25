@@ -34,7 +34,10 @@ class PgVectorStore(VectorStoreInterface):
         """
         # 중앙화된 설정 사용
         self.config = get_vector_db_config()
-        self.db_config = db_config or self.config.get_db_config()
+        if db_config is None:
+            self.db_config = self.config.get_db_config()
+        else:
+            self.db_config = db_config
         
         # 에러 핸들러 초기화
         self.error_handler = ErrorHandler()

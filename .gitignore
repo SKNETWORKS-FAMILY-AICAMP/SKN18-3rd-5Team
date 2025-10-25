@@ -250,4 +250,8 @@ service/fine_tuning/llama_factory/dataset/*
 
 # chat-data 
 app_database.db
+
+# RAG evaluation results
+service/rag_jsonl/results/*
+
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,python

@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EvaluationConfig:
     """평가 설정"""
-    queries_path: str = "cli/evaluation_queries.json"
+    queries_path: str = "service/rag_jsonl/cli/evaluation_queries.json"
     top_k: int = 5
     enable_generation: bool = False
     model_type: EmbeddingModelType = EmbeddingModelType.MULTILINGUAL_E5_SMALL
-    output_dir: str = "evaluation_results"
+    output_dir: str = "service/rag_jsonl/results"
     save_detailed_results: bool = True
     save_to_db: bool = True  # DB 저장 여부
     db_config: Optional[Dict[str, str]] = None  # DB 설정
@@ -56,6 +56,7 @@ class RAGEvaluator:
         else:
             self.rag_system = RAGSystem(
                 model_type=self.config.model_type,
+                db_config=self.config.db_config.get_db_config() if hasattr(self.config.db_config, 'get_db_config') else self.config.db_config,
                 enable_generation=self.config.enable_generation
             )
         
@@ -71,7 +72,9 @@ class RAGEvaluator:
     
     def _load_evaluation_queries(self) -> List[Dict[str, Any]]:
         """평가 쿼리 로드"""
-        queries_path = Path(__file__).parent.parent / self.config.queries_path
+        # 프로젝트 루트를 기준으로 경로 계산
+        project_root = Path(__file__).parents[3]  # service/rag_jsonl/evaluation/ -> project_root
+        queries_path = project_root / self.config.queries_path
         
         try:
             with open(queries_path, 'r', encoding='utf-8') as f:
@@ -215,14 +218,18 @@ class RAGEvaluator:
         ground_truth = query_data.get('ground_truth_answer', '')
         
         # RAG 시스템으로 쿼리 실행
-        if self.config.enable_generation:
-            rag_response = self.rag_system.query(query)
-            retrieved_docs = rag_response.retrieved_documents
-            generated_answer = rag_response.generated_answer.text if rag_response.generated_answer else ""
-        else:
-            # 검색만 수행
-            retrieved_docs = self.rag_system.retrieve(query, top_k=self.config.top_k)
-            generated_answer = ""
+        try:
+            if self.config.enable_generation:
+                rag_response = self.rag_system.query(query)
+                retrieved_docs = rag_response.retrieved_documents
+                generated_answer = rag_response.generated_answer.text if rag_response.generated_answer else ""
+            else:
+                # 검색만 수행
+                retrieved_docs = self.rag_system.search_only(query, top_k=self.config.top_k)
+                generated_answer = ""
+        except Exception as e:
+            logger.error(f"RAG 시스템 실행 오류: {str(e)}")
+            raise
         
         response_time = (time.time() - start_time) * 1000  # ms
         
