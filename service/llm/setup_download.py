@@ -17,14 +17,32 @@ login(token=HF_TOKEN)
 # 4) 다운로드 가속 옵션
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
-BASE = os.path.abspath("./models")
-os.makedirs(BASE, exist_ok=True)
+IS_RUNPOD = os.getenv("IS_RUNPOD", "false").strip().lower() == "true"
+BASE_DIR = "/workspace/SKN18-3rd-5Team/" if IS_RUNPOD else "./"
+BASE_DIR = os.path.abspath(BASE_DIR)
+
+def _resolve_model_dir(env_value: str, default_relative: str) -> str:
+    """Resolve a model directory relative to BASE_DIR unless already absolute."""
+    candidate = env_value.strip() if env_value else default_relative
+    candidate = os.path.expanduser(candidate)
+    if os.path.isabs(candidate):
+        return os.path.normpath(candidate)
+    return os.path.normpath(os.path.join(BASE_DIR, candidate))
 
 HF_ADAPTER_REPO_ID = os.getenv("HF_ADAPTER_REPO_ID", "has0327/Llama-3.2-3B-ko-finetuned").strip()
-MODEL_DIR_ADAPTER = os.getenv("MODEL_DIR_ADAPTER", "./models/base")
+MODEL_DIR_ADAPTER = _resolve_model_dir(
+    os.getenv("MODEL_DIR_ADAPTER") or os.getenv("HF_REPO_ID", ""),
+    "models/adapters/Llama-3.2-3B-ko-finetuned",
+)
 
-HF_BASE_REPO_ID = os.getenv("HF_BASE_REPO_ID", "meta-llama/Llama-2-7b-hf").strip()
-MODEL_DIR_BASE = os.getenv("MODEL_DIR_BASE", "./models/adapters")
+HF_BASE_REPO_ID = os.getenv("HF_BASE_REPO_ID", "meta-llama/Llama-3.2-3B").strip()
+MODEL_DIR_BASE = _resolve_model_dir(
+    os.getenv("MODEL_DIR_BASE") or os.getenv("HF_BASE_MODEL", ""),
+    "models/base/Llama-3.2-3B",
+)
+
+os.makedirs(MODEL_DIR_ADAPTER, exist_ok=True)
+os.makedirs(MODEL_DIR_BASE, exist_ok=True)
 
 # LoRA 어댑터
 print("⬇️  FinGPT LoRA 어댑터 다운로드 중…")
