@@ -16,11 +16,7 @@ st.set_page_config(
 
 # 데이터베이스 초기화
 init_database()
-
 render_sidebar() # 사이드바 나오기
-
-
-
 
 # ---------------------------
 # UTILS

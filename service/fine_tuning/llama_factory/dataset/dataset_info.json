@@ -1,0 +1,11 @@
+{
+  "ko_civil_service_inst": {
+    "file_name": "ko_civil_service.inst.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "response": "output",
+      "history": "input"
+    }
+  }
+}

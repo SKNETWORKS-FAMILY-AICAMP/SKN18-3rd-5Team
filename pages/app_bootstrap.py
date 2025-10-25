@@ -72,6 +72,13 @@ def render_page_title(page_info: Any, *, variant: str = "default") -> None:
     st.markdown(f'<h1 class="{title_class}">{page_info.icon}&nbsp;{page_info.label}</h1>', unsafe_allow_html=True)
 
 def render_sidebar():
+    # 공통 페이지 설정
+    st.set_page_config(
+        page_title="StockBuddy: Investment Q&A System",
+        page_icon="🤖",
+        layout="wide",
+    )
+    
     st.markdown("""
     <style>
     /* 🌟 사이드바 고정 크기 및 정렬 */
