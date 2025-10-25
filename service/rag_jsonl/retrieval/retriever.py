@@ -91,13 +91,12 @@ class Retriever:
             # 쿼리 임베딩 생성
             query_embedding = self.encoder.encode_query(query)
             
-            # 벡터 검색 수행 (시간 필터 포함)
+            # 벡터 검색 수행
             results = self.vector_store.search_similar(
                 query_embedding=query_embedding,
                 model_type=self.model_type,
                 top_k=top_k,
-                min_similarity=min_similarity,
-                filters=temporal_info.filters if temporal_info else None
+                min_similarity=min_similarity
             )
             
             # 검색 시간 계산
@@ -107,20 +106,20 @@ class Retriever:
             processed_results = []
             for result in results:
                 processed_result = {
-                    'chunk_id': result['chunk_id'],
-                    'content': result['content'],
-                    'similarity': float(result['similarity']),
+                    'chunk_id': result.chunk_id,
+                    'content': result.content,
+                    'similarity': float(result.similarity),
                     'search_time_ms': search_time
                 }
                 
-                if include_metadata and result.get('metadata'):
-                    processed_result['metadata'] = result['metadata']
+                if include_metadata and result.metadata:
+                    processed_result['metadata'] = result.metadata
                 
                 processed_results.append(processed_result)
             
-            # 문맥 윈도우 추가 (Context Window Management)
-            if include_context:
-                processed_results = self._enrich_with_context(processed_results)
+            # 문맥 윈도우 추가는 현재 비활성화 (메서드 미구현)
+            # if include_context:
+            #     processed_results = self._enrich_with_context(processed_results)
             
             # 리랭킹 적용 (선택사항)
             if use_reranker and self.reranker:
@@ -316,7 +315,7 @@ class Retriever:
     def close(self):
         """리소스 정리"""
         if hasattr(self, 'vector_store'):
-            self.vector_store.disconnect()
+            self.vector_store.close()
 
 
 class MultiModelRetriever:
