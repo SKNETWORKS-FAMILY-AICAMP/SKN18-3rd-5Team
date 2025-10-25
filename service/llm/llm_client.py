@@ -55,16 +55,26 @@ def _load_model_lora(base_path: str, lora_path: str):
         kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
         kwargs["device_map"] = "auto"
     else:
-        kwargs["torch_dtype"] = _torch_dtype()
+        # kwargs["torch_dtype"] = _torch_dtype()
+        kwargs["dtype"] = _torch_dtype()
         kwargs["device_map"] = HF_DEVICE_MAP
 
     # 1) 베이스 모델(로컬 경로) 로드
+    """
     base_model = AutoModelForCausalLM.from_pretrained(
         base_path,
         trust_remote_code=HF_TRUST,
         low_cpu_mem_usage=True,             # ← 추가
         **_hf_auth_kwargs(),
         **kwargs,
+    )
+    """
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_path,
+        trust_remote_code=HF_TRUST,
+        device_map=HF_DEVICE_MAP,
+        torch_dtype=_torch_dtype(),  # 또는 dtype=_torch_dtype() (버전 호환성)
+        **_hf_auth_kwargs(),
     )
     # 2) 어댑터(로컬 경로) 적용
     model = PeftModel.from_pretrained(
@@ -128,7 +138,8 @@ def chat(system: str, user: str, max_tokens: int = 512) -> str:
         top_p=0.9,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
-        use_cache=False,                      # ← KV-cache OFF (메모리 급감)
+        # use_cache=False,                      # ← KV-cache OFF (메모리 급감)
+        use_cache=True,                      # GPU에서는 KV-cache ON
     )
     output_ids = gen_out[0][input_ids.shape[-1]:]
     text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()

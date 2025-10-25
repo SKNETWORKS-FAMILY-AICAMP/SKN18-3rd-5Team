@@ -56,4 +56,5 @@ accelerate==1.11.0          # 분산 학습, mixed precision 등 최신 트레�
 torch>=2.2                  # PyTorch: LLM 기반 모델 실행 및 트레이닝 프레임워크
 sentencepiece==0.2.1        # 일부 토크나이저에서 사용하는 SentencePiece 라이브러리 (텍스트 전처리)
 peft>=0.11                  # Parameter-Efficient Fine-Tuning (LLM 파인튜닝용) 패키지
-bitsandbytes==0.42.0        # 4bit/8bit LLM 로딩(압축/최적화된 파라미터) 지원
+#bitsandbytes==0.43.1        # 4bit/8bit LLM 로딩(압축/최적화된 파라미터) 지원
+hf_transfer
