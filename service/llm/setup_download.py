@@ -20,19 +20,25 @@ os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 BASE = os.path.abspath("./models")
 os.makedirs(BASE, exist_ok=True)
 
+HF_ADAPTER_REPO_ID = os.getenv("HF_ADAPTER_REPO_ID", "has0327/Llama-3.2-3B-ko-finetuned").strip()
+MODEL_DIR_ADAPTER = os.getenv("MODEL_DIR_ADAPTER", "./models/base")
+
+HF_BASE_REPO_ID = os.getenv("HF_BASE_REPO_ID", "meta-llama/Llama-2-7b-hf").strip()
+MODEL_DIR_BASE = os.getenv("MODEL_DIR_BASE", "./models/adapters")
+
 # LoRA 어댑터
 print("⬇️  FinGPT LoRA 어댑터 다운로드 중…")
 snapshot_download(
-    repo_id="FinGPT/fingpt-mt_llama2-7b_lora",
-    local_dir=os.path.join(BASE, "adapters/fingpt-mt_llama2-7b_lora"),
+    repo_id=HF_ADAPTER_REPO_ID,
+    local_dir=MODEL_DIR_ADAPTER,
     local_dir_use_symlinks=False
 )
 
 # 베이스 모델
 print("⬇️  Llama-2 7B 베이스 다운로드 중… (게이트 승인 필요)")
 snapshot_download(
-    repo_id="meta-llama/Llama-2-7b-hf",
-    local_dir=os.path.join(BASE, "base/Llama-2-7b-hf"),
+    repo_id=HF_BASE_REPO_ID,
+    local_dir=MODEL_DIR_BASE,
     local_dir_use_symlinks=False
 )
 
