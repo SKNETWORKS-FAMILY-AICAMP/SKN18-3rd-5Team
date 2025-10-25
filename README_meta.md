@@ -128,6 +128,11 @@ API (XML)
         pip install --no-deps xformers
         pip install -e .[metrics,bitsandbytes,qwen]
 
+        # 추가로 설치가 필요한 패키지
+        pip install torchvision
+        pip install tensorboard
+        pip install tensorboardX
+
         # 폴더 생성 
         pwd 
         mkdir output
@@ -197,15 +202,17 @@ API (XML)
         ```
     - 다음을 붙여 넣기
         ```json
-        "ko_civil_service_inst": {
-            "file_name": "ko_civil_service.inst.json",
-            "formatting": "alpaca", 
-            "columns": {
+        {
+            "ko_civil_service_inst": {
+                "file_name": "train.json",
+                "formatting": "alpaca",
+                "columns": {
                 "prompt": "instruction",
                 "response": "output",
                 "history": "input"
+                }
             }
-        },
+        }
         ```
 
 6. Config 추가
@@ -276,7 +283,7 @@ API (XML)
         greater_is_better: false
 
         report_to: ["tensorboard"]
-        resize_vocab: true
+        resize_vocab: false
         upcast_layernorm: true
         ```
 
