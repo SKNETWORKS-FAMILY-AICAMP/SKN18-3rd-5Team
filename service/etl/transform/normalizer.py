@@ -10,8 +10,10 @@ Transform Pipeline - Step 2: 데이터 정규화 및 자연어 품질 개선
 3. chunker.py     → 스마트 청킹 및 메타데이터 강화
 
 [이 파일의 역할]
-- 날짜 형식 통일 (YYYY-MM-DD)
-- 통화 단위 표준화 (억원 변환)
+- 날짜 형식 통일 (YYYY-MM-DD, "2022주-10-31" → "2022-10-31")
+- 통화 단위 표준화 (억원 변환, 콤마 제거)
+- 숫자/비율 정규화 ("2,361,968,545주" → "2361968545주", "비율(%): 28.1%" → "비율: 28.1%")
+- 표 경로 단순화 (검색 최적화)
 - 목차 및 불필요한 내용 제거
 - 마크다운 문법 정리
 - 자연어 품질 개선 (반복 축소, 문맥 추가)
@@ -125,7 +127,7 @@ class DataNormalizer:
         metadata: Dict,
         section_path: str = ""
     ) -> str:
-        """자연어 품질 개선"""
+        """자연어 품질 개선 (검색 최적화 강화)"""
         
         # 1. 목차 및 불필요 패턴 제거
         text = self._remove_unnecessary_content(text)
@@ -133,13 +135,18 @@ class DataNormalizer:
         # 2. 마크다운 제거
         text = self._clean_markdown(text)
         
-        # 3. 타입별 처리
+        # 3. 날짜 정규화 (검색 최적화)
+        text = self._normalize_dates_in_text(text)
+        
+        # 4. 타입별 처리
         if chunk_type == 'table_row':
             text = self._improve_table_text(text, structured_data, metadata, section_path)
+            # 5. 표 데이터 경로 단순화 (검색 최적화)
+            text = self._simplify_table_paths(text)
         elif chunk_type == 'text':
             text = self._improve_text_content(text, metadata, section_path)
         
-        # 4. 공백 정리
+        # 6. 공백 정리
         text = self._normalize_whitespace(text)
         
         return text
@@ -1025,7 +1032,8 @@ class DataNormalizer:
                 r'\1주',
                 text
             )
-            text = re.sub(r'\b(\d{4,})(?!' + has_unit_pattern + r')(?!\s*년)', r'\1주', text)
+            # 날짜 패턴 제외: YYYY-MM-DD, YYYY.MM.DD, YYYY년 MM월 DD일
+            text = re.sub(r'\b(\d{4,})(?!' + has_unit_pattern + r')(?!\s*년)(?![-./]\d)', r'\1주', text)
         
         # 3. 비율 관련
         elif any(keyword in text for keyword in ['비율', '율', '지분', '점유']):
@@ -1033,7 +1041,7 @@ class DataNormalizer:
             text = re.sub(r'\b0\.(\d+)\b', lambda m: f"{float(m.group(0))*100:.1f}%", text)
         
         return text
-    
+    33
     def _format_currency(self, num_str: str, unit_multiplier: int = 1) -> str:
         """금액 포맷팅 (안전한 콤마 추가)
         
@@ -1061,7 +1069,7 @@ class DataNormalizer:
             return num_str
     
     def _normalize_dates_in_text(self, text: str) -> str:
-        """텍스트 내 날짜 정규화"""
+        """텍스트 내 날짜 정규화 (검색 최적화)"""
         
         # 1. "YYYY년 MM월 DD일" → "YYYY-MM-DD"
         def korean_date_to_iso(match):
@@ -1081,7 +1089,14 @@ class DataNormalizer:
             text
         )
         
-        # 3. 기수 표현 정규화 "제 54 기" → "제54기"
+        # 3. ❌ 문제: "2022주-10-31" → "2022-10-31" (검색 최적화)
+        text = re.sub(
+            r'(\d{4})주-(\d{2})-(\d{2})',
+            r'\1-\2-\3',
+            text
+        )
+        
+        # 4. 기수 표현 정규화 "제 54 기" → "제54기"
         text = re.sub(r'제\s*(\d+)\s*기', r'제\1기', text)
         
         return text
@@ -1097,6 +1112,30 @@ class DataNormalizer:
         
         # 앞뒤 공백 제거
         text = text.strip()
+        
+        return text
+    
+    def _simplify_table_paths(self, text: str) -> str:
+        """표 데이터의 장황한 경로 단순화 (검색 최적화)
+        
+        예시:
+        "1. 직전사업연도 말 현재 상법상 배당가능이익 한도 > 가. 순자산액: 3,954.7억원"
+        → "배당가능이익 한도 - 순자산액: 3,954.7억원"
+        """
+        
+        # 패턴 1: "숫자. 긴 제목 > 하위항목 > 값" → "제목 - 하위항목: 값"
+        # "1. 직전사업연도 말 현재 상법상 배당가능이익 한도 > 가. 순자산액: 3,954.7억원"
+        pattern1 = r'\d+\.\s+(?:[가-힣\s]+?)\s+([가-힣]+)\s+(?:한도|내역|현황|상황)\s*>\s*(?:[가-힣]{1,2}\.\s*)?([^:]+):'
+        text = re.sub(pattern1, r'\1 한도 - \2:', text)
+        
+        # 패턴 2: "숫자. 제목 > 숫자. 하위항목 > 값" → "제목 - 하위항목: 값"
+        # "7. 해지 전 자기주식 보유현황 > 배당가능범위 내취득(주) > 보통주식 > 5,947,889 > 비율(%): 1.2"
+        pattern2 = r'\d+\.\s+([^>]+?)\s+>\s+([^>]+?)\s+>\s+([^>]+?)\s+>\s+[\d,]+\s+>\s+'
+        text = re.sub(pattern2, r'\1 - \2 - \3 ', text)
+        
+        # 패턴 3: 단순화 - "숫자. 제목 > 하위항목: 값" → "제목 - 하위항목: 값"
+        pattern3 = r'\d+\.\s+([^>]+?)\s+>\s+([^:]+):'
+        text = re.sub(pattern3, r'\1 - \2:', text)
         
         return text
     
@@ -1142,7 +1181,18 @@ class DataNormalizer:
         return value
     
     def _normalize_number_value(self, value: str, key: str) -> str:
-        """숫자 값 정규화 (단위 추가)"""
+        """숫자 값 정규화 (단위 추가 + 검색 최적화)"""
+        
+        # 1. ❌ 문제: "2,361,968,545주" → 콤마 제거
+        # 숫자 뒤에 단위가 붙은 경우 콤마 제거
+        value = re.sub(r'(\d{1,3}(?:,\d{3})+)(주|원|억|건)', r'\1\2', value)
+        value = value.replace(',', '')  # 모든 콤마 제거
+        
+        # 2. ❌ 문제: "비율(%): 28.1%" → "비율: 28.1%"
+        value = re.sub(r'비율\(%\):\s*(\d+\.?\d*)%?', r'비율: \1%', value)
+        
+        # 3. % 중복 제거
+        value = re.sub(r'(\d+\.?\d*)%%', r'\1%', value)
         
         # 이미 단위가 있으면 그대로
         if any(unit in value for unit in ['원', '주', '억', '%', '건']):
