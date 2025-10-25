@@ -24,16 +24,19 @@ origin_path = Path("./data/csv2json.json")
 train_path = Path("./service/fine_tuning/llama_factory/dataset/train.json")
 test_path = Path("./service/fine_tuning/llama_factory/dataset/test.json")
 
+def split():
+    # JSON 파일 열기
+    with open(origin_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-# JSON 파일 열기
-with open(origin_path, "r", encoding="utf-8") as f:
-    data = json.load(f)
+    train_data, test_data = train_test_split(data, test_size=0.1, random_state=42)
 
-train_data, test_data = train_test_split(data, test_size=0.1, random_state=42)
+    with open(train_path, "w", encoding="utf-8") as f:
+        json.dump(train_data, f, ensure_ascii=False, indent=2)
+    with open(test_path, "w", encoding="utf-8") as f:
+        json.dump(test_data, f, ensure_ascii=False, indent=2)
 
-with open(train_path, "w", encoding="utf-8") as f:
-    json.dump(train_data, f, ensure_ascii=False, indent=2)
-with open(test_path, "w", encoding="utf-8") as f:
-    json.dump(test_data, f, ensure_ascii=False, indent=2)
+    logging.info(f"train.json: {len(train_data)}, test.json: {len(test_data)} 저장 완료!")
 
-logging.info(f"train.json: {len(train_data)}, test.json: {len(test_data)} 저장 완료!")
+if __name__ == "__main__":
+    split()
