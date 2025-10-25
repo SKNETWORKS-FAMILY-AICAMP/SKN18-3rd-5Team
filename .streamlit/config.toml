@@ -8,7 +8,7 @@ primaryColor="#ffffff"
 [server]
 # 런팟용 설정
 port = 8501
-address = "0.0.0.0"
+address = "localhost"
 enableCORS = false
 enableXsrfProtection = false
 enableWebsocketCompression = false
