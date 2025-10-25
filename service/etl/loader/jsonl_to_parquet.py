@@ -524,16 +524,22 @@ def main():
     
     args = parser.parse_args()
     
-    # 경로 설정
-    script_dir = Path(__file__).parent  # service/etl/loader
-    etl_dir = script_dir.parent  # service/etl
-    service_dir = etl_dir.parent  # service
-    project_root = service_dir.parent  # project root
-    data_dir = project_root / "data"
+    #  # 경로 설정
+    # script_dir = Path(__file__).parent  # service/etl/loader
+    # etl_dir = script_dir.parent  # service/etl
+    # service_dir = etl_dir.parent  # service
+    # project_root = service_dir.parent  # project root
+    # data_dir = project_root / "data"
+
+    # input_dir = data_dir / "transform" / "final"
+    # parquet_dir = data_dir / "parquet"
+
+    # 경로 설정 (RunPod 환경)
+    workspace_dir = Path("/workspace")
     
     # 입력/출력 경로
-    input_dir = data_dir / "transform" / "final"
-    parquet_dir = data_dir / "parquet"
+    input_dir = workspace_dir / "final"
+    parquet_dir = workspace_dir / "LFS"
     
     # 파티셔닝 처리
     if args.partition == 'none':
