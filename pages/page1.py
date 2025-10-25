@@ -5,6 +5,12 @@ from pages.app_bootstrap import render_sidebar, render_page_title, PAGE_INFO  # 
 # =========================
 # 공통 페이지 설정
 # =========================
+st.set_page_config(
+    page_title="StockBuddy: Investment Q&A System",
+    page_icon="🤖",
+    layout="wide",
+)
+
 render_sidebar()
 render_page_title(PAGE_INFO["P1"], variant="compact")
 
