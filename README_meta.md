@@ -292,14 +292,14 @@ API (XML)
 7. 학습 시작
    - CLI
         ```bash
-        # 내 경로 확인
+        # 내 경로 확인 (/workspace/LLaMA-Factory/)
         pwd
 
         # (선택) 캐시 경로 고정해두면 재사용에 좋아요
         export HF_HOME=/workspace/.cache/huggingface
 
         # 학습 시작
-        python -m llamafactory-cli train config/llama3-8b-instruct-bnb-4bit-unsloth.yaml
+        llamafactory-cli train config/llama3-8b-instruct-bnb-4bit-unsloth.yaml
         ```
     - Config 추천 설정
         ```yaml

@@ -44,7 +44,7 @@ def do_cleansing():
     ##############################
     df = df.dropna(subset=["본문"])
     df = df[df["본문"].str.len() > 100]
-    df = df.drop_duplicates(subset=["제목"])
+    df = df.drop_duplicates(subset=["제목", "부제"])
 
     ##############################
     # 저장
