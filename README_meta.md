@@ -71,6 +71,7 @@ API (XML)
 - T : JSONL & XML -> 정규화 -> 자연어 문서화 (yaml / md) -> 로컬 저장 (docs/{corp}/{year}/{reprt_code}/{rcept_no}.md) -> 청크 (1차/2차 ) + 메타 동봉 -> .parquet 파일 생성
 - L : Parquet & MD -> text 임베딩 -> pgvector -> (키워드 인덱스 색인) -> 문서 CDN 업로드 보류 -> 서빙 (질의 및 응답)
 
+
 ### 3. ETL - FineTuning
 - 
 
@@ -155,22 +156,24 @@ API (XML)
 ---
 
 ## [랭그래프]
-
-  - 전체 연동 개념도
-    ```text
-    [ Streamlit UI ]
-        ↓ (user_level session_state)
-    [ LangGraph App ]
-        ↓
-    [ Router Node ]
-    └── 레벨별 파라미터 (top_k, context_len)
-    [ Generate Node ]
-    └── PROMPT_TEMPLATES[level] 기반 시스템/유저 프롬프트 구성
-        ↓
-    [ FT 모델 + pgvector 검색 ]
-        ↓
-    [ 결과 + ref 반환 ]
-    ```
-  - 참고 : ![[graph/readme.md]]
-
-
+- 참고 : ![[graph/readme.md]]
+- 전체 연동 개념도
+  ```text
+  [ Streamlit UI ]
+      ↓ (user_level session_state)
+  [ LangGraph App ]
+      ↓
+  [ Router Node ]
+  └── 레벨별 파라미터 (top_k, context_len)
+  [ Generate Node ]
+  └── PROMPT_TEMPLATES[level] 기반 시스템/유저 프롬프트 구성
+      ↓
+  [ FT 모델 + pgvector 검색 ]
+      ↓
+  [ 결과 + ref 반환 ]
+  ```
+- ⚠️ **LangGraph 검색 파라미터 주의**  
+> 재작성된 질문은 그대로 `PgVectorStore`에 넘기기 때문에, 메타 정보를 덧붙일 때 문장이 너무 길어지거나 핵심 키워드가 뒤로 밀리면 유사도가 떨어질 수 있습니다.  
+> - 리트리버 구현: `service/rag/retrieval/retriever.py:82-134`  
+> - 기본 `top_k`·리랭킹 설정: `service/rag/rag_system.py:32-87`  
+> 재작성 로직을 수정할 때 이 두 파일의 파라미터와 함께 검토하세요.
