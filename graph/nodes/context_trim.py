@@ -19,13 +19,18 @@ def _extract_citations(docs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     citations: List[Dict[str, str]] = []
     for doc in docs:
         meta = doc.get("metadata") or {}
+        report_id = doc.get("report_id") or meta.get("report_id", "")
+        date = doc.get("date") or meta.get("date", "")
+        url = doc.get("url") or meta.get("url", "")
+        title = doc.get("title") or meta.get("title", "")
+        chunk_id = doc.get("chunk_id") or meta.get("chunk_id", "")
         citations.append(
             {
-                "report_id": doc.get("report_id", meta.get("report_id", "")),
-                "date": doc.get("date", meta.get("date", "")),
-                "url": doc.get("url", meta.get("url", "")),
-                "title": doc.get("title", meta.get("title", "")),
-                "chunk_id": doc.get("chunk_id", meta.get("chunk_id", "")),
+                "report_id": report_id or "",
+                "date": date or "",
+                "url": url or "",
+                "title": title or "",
+                "chunk_id": chunk_id or "",
             }
         )
     return citations

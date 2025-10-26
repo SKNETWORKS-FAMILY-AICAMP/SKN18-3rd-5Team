@@ -46,16 +46,22 @@ def run(state: QAState) -> QAState:
         formatted_results = []
         # TODO: result["metadata"]에서 report_id/date/title/url을 꺼내는 구조로 통일하기
         for result in results:
+            metadata = result.get("metadata") or {}
+            report_id = result.get("report_id") or metadata.get("report_id", "")
+            date = result.get("date") or metadata.get("date", "")
+            url = result.get("url") or metadata.get("url", "")
+            title = result.get("title") or metadata.get("title", "")
+            chunk_id = result.get("chunk_id") or metadata.get("chunk_id", "")
             formatted_results.append(
                 {
                     "chunk_text": result.get("content", ""),
-                    "report_id": result.get("report_id", ""),
-                    "date": result.get("date", ""),
-                    "url": result.get("url", ""),
-                    "title": result.get("title", ""),
-                    "chunk_id": result.get("chunk_id", ""),
+                    "report_id": report_id or "",
+                    "date": date or "",
+                    "url": url or "",
+                    "title": title or "",
+                    "chunk_id": chunk_id or "",
                     "similarity": result.get("similarity", 0.0),
-                    "metadata": result.get("metadata", {}),
+                    "metadata": metadata,
                 }
             )
 
