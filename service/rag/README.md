@@ -543,14 +543,7 @@ python rag_cli.py search --query "AI 기술" --min-similarity 0.7
 ### RAG 평가
 
 ```bash
-# 기본 평가
-python rag_evaluation_tool.py --top-k 3
-
-# 특정 기업 평가
-python rag_evaluation_tool.py --corp-filter "삼성전자" --top-k 5
-
-# 다른 모델로 평가
-python rag_evaluation_tool.py --model kakaobank --top-k 3
+b
 ```
 
 ### 통계 확인
