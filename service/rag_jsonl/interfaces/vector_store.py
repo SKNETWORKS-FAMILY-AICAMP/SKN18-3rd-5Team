@@ -6,7 +6,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Iterable
 import numpy as np
 from dataclasses import dataclass
 
@@ -100,6 +100,26 @@ class VectorStoreInterface(ABC):
         Returns:
             청크 ID 리스트
         """
+        pass
+
+    @abstractmethod
+    def count_chunks_to_process(
+        self,
+        model_type: Optional[EmbeddingModelType],
+        skip_existing: bool = True
+    ) -> int:
+        """처리할 청크 수 조회"""
+        pass
+
+    @abstractmethod
+    def iter_chunks_to_process(
+        self,
+        model_type: Optional[EmbeddingModelType],
+        skip_existing: bool = True,
+        limit: Optional[int] = None,
+        fetch_size: int = 1000
+    ) -> Iterable[Dict[str, Any]]:
+        """처리할 청크를 스트리밍으로 반환"""
         pass
     
     @abstractmethod

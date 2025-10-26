@@ -6,7 +6,7 @@ PostgreSQL의 chunks 테이블을 읽어 임베딩을 생성하고 embeddings_* 
 사용법:
     # ETL loader 디렉토리에서 실행
     cd service/etl/loader_jsonl
-    python embeddings.py --model e5 --batch-size 100
+    python embeddings.py --model e5 --batch-size 512
     
     # 프로젝트 루트에서 실행
     python service/etl/loader_jsonl/embeddings.py --model kakaobank --limit 1000
@@ -17,8 +17,9 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator
 import time
+import math
 
 # 프로젝트 루트 경로 추가
 project_root = Path(__file__).parent.parent.parent.parent
@@ -73,7 +74,7 @@ class EmbeddingGenerator:
     
     def generate_for_all_chunks(
         self,
-        batch_size: int = 100,
+        batch_size: int = 512, # 배치사이즈 : 512
         limit: Optional[int] = None,
         skip_existing: bool = True
     ) -> Dict[str, Any]:
@@ -94,23 +95,38 @@ class EmbeddingGenerator:
         }
         
         try:
-            # 1. 처리할 청크 가져오기
-            chunks = self._get_chunks_to_process(limit, skip_existing)
-            stats['total_chunks'] = len(chunks)
-            
-            if not chunks:
+            # 1. 처리할 청크 수 조회 
+            # 개수만 조회하여 메모리 사용량 줄임
+            total_available = self.vector_store.count_chunks_to_process(
+                model_type=self.model_type,
+                skip_existing=skip_existing
+            )
+            if limit is not None:
+                stats['total_chunks'] = min(total_available, limit)
+            else:
+                stats['total_chunks'] = total_available
+
+            if stats['total_chunks'] == 0:
                 logger.info("처리할 청크가 없습니다")
                 return stats
             
-            logger.info(f"처리할 청크: {len(chunks):,}개")
+            logger.info(f"처리할 청크: {stats['total_chunks']:,}개")
+            total_batches = math.ceil(stats['total_chunks'] / batch_size)
             
             # 2. 배치별로 처리
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
-                batch_num = i // batch_size + 1
-                total_batches = (len(chunks) + batch_size - 1) // batch_size
+            # 하나의 배치만 메모리에 로드 (스트리밍 처리)
+            batch_index = 0
+            for batch in self._iter_chunk_batches(batch_size, limit, skip_existing):
+                batch_index += 1
+                batch_num = batch_index
+                should_log_progress = (
+                    batch_num == 1
+                    or batch_num == total_batches
+                    or batch_num % 10 == 0
+                )
                 
-                logger.info(f"배치 {batch_num}/{total_batches} 처리 중 ({len(batch)}개 청크)")
+                if should_log_progress:
+                    logger.info(f"배치 {batch_num}/{total_batches} 처리 중 ({len(batch)}개 청크)")
                 
                 try:
                     self._process_batch(batch)
@@ -122,8 +138,9 @@ class EmbeddingGenerator:
                     stats['errors'] += len(batch)
                 
                 # 진행률 표시
-                progress = stats['processed'] / stats['total_chunks'] * 100
-                logger.info(f"진행률: {stats['processed']:,}/{stats['total_chunks']:,} ({progress:.1f}%)")
+                if should_log_progress:
+                    progress = stats['processed'] / stats['total_chunks'] * 100 if stats['total_chunks'] else 0
+                    logger.info(f"진행률: {stats['processed']:,}/{stats['total_chunks']:,} ({progress:.1f}%)")
             
             # 3. 통계 출력
             elapsed_time = time.time() - stats['start_time']
@@ -145,58 +162,38 @@ class EmbeddingGenerator:
             logger.error(f"임베딩 생성 실패: {e}")
             raise
     
-    def _get_chunks_to_process(
-        self, 
-        limit: Optional[int], 
+    def _iter_chunk_batches(
+        self,
+        batch_size: int,
+        limit: Optional[int],
         skip_existing: bool
-    ) -> List[Dict[str, Any]]:
-        """처리할 청크 목록 가져오기 (개선된 버전)"""
-        
-        try:
-            if skip_existing:
-                # 아직 임베딩이 없는 청크만 조회
-                chunk_ids = self.vector_store.get_chunk_ids(
-                    limit=limit,
-                    model_type=self.model_type
-                )
-            else:
-                # 모든 청크 조회
-                chunk_ids = self.vector_store.get_chunk_ids(limit=limit)
+    ) -> Generator[List[Dict[str, Any]], None, None]:
+        """처리할 청크를 배치 단위로 스트리밍"""
+
+        batch: List[Dict[str, Any]] = []
+        chunk_generator = self.vector_store.iter_chunks_to_process(
+            model_type=self.model_type,
+            skip_existing=skip_existing,
+            limit=limit,
+            fetch_size=batch_size
+        )
+
+        for row in chunk_generator:
+            batch.append({
+                'id': row['id'],
+                'chunk_id': row['chunk_id'],
+                'natural_text': row['natural_text'],
+                'chunk_type': row['chunk_type'],
+                'metadata': row['metadata']
+            })
+
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+
+        if batch:
+            yield batch
             
-            if not chunk_ids:
-                return []
-            
-            # 청크 상세 정보 조회
-            cursor = self.vector_store._get_cursor()
-            placeholders = ','.join(['%s'] * len(chunk_ids))
-            sql = f"""
-                SELECT id, chunk_id, natural_text, chunk_type, metadata
-                FROM chunks
-                WHERE id IN ({placeholders})
-                  AND natural_text IS NOT NULL
-                  AND natural_text != ''
-                ORDER BY id
-            """
-            
-            cursor.execute(sql, chunk_ids)
-            
-            chunks = []
-            for row in cursor.fetchall():
-                chunks.append({
-                    'id': row['id'],
-                    'chunk_id': row['chunk_id'],
-                    'natural_text': row['natural_text'],
-                    'chunk_type': row['chunk_type'],
-                    'metadata': row['metadata']
-                })
-            
-            cursor.close()
-            return chunks
-            
-        except Exception as e:
-            logger.error(f"청크 조회 실패: {e}")
-            return []
-    
     def _process_batch(self, batch: List[Dict[str, Any]]):
         """배치 처리 (개선된 버전)"""
         
@@ -280,8 +277,8 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=100,
-        help="배치 크기 (기본값: 100)"
+        default=512,
+        help="배치 크기 (기본값: 512)"
     )
     
     parser.add_argument(

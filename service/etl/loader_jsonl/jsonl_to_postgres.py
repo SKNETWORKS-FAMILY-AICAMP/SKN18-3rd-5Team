@@ -89,16 +89,18 @@ class JSONLToPostgresLoader:
         cursor.close()
         logger.info("테이블 및 인덱스 생성 완료")
     
-    def _read_jsonl_files(self, jsonl_dir: Path) -> Generator[Dict[str, Any], None, None]:
+    # 파일별 진행 상황 추적, 진행률 표시
+    def _read_jsonl_files(self, jsonl_dir: Path) -> Generator[Tuple[Dict[str, Any], Path, int, int], None, None]:
         """JSONL 파일들을 순차적으로 읽기"""
         jsonl_files = sorted(jsonl_dir.glob("*_chunks.jsonl"))
-        print(f"📂 처리할 JSONL 파일 수: {len(jsonl_files)}개")
-        logger.info(f"📂 처리할 JSONL 파일 수: {len(jsonl_files)}개")
+        total_files = len(jsonl_files)
+        print(f"📂 처리할 JSONL 파일 수: {total_files}개")
+        logger.info(f"📂 처리할 JSONL 파일 수: {total_files}개")
         import sys
         sys.stdout.flush()
         
         for file_idx, file_path in enumerate(jsonl_files, 1):
-            print(f"({file_idx}/{len(jsonl_files)}): {file_path.name}")
+            print(f"({file_idx}/{total_files}): {file_path.name}")
             sys.stdout.flush()
             chunk_count = 0
             
@@ -109,11 +111,10 @@ class JSONLToPostgresLoader:
                         chunk_count += 1
                         
                         
-                        yield data
+                        yield data, file_path, file_idx, total_files
                     except json.JSONDecodeError as e:
                         logger.warning(f"⚠️ JSON 파싱 실패 {file_path.name}:{line_no}: {e}")
                         continue
-            
     
     def _insert_chunks_batch(self, chunks_batch: List[Dict[str, Any]]):
         """청크 배치를 데이터베이스에 삽입"""
@@ -179,7 +180,6 @@ class JSONLToPostgresLoader:
         
         # 통계 변수
         total_chunks = 0
-        total_files = 0
         start_time = time.time()
         
         # 배치 처리
@@ -190,10 +190,14 @@ class JSONLToPostgresLoader:
             logger.info("📖 JSONL 파일 읽기 시작...")
             import sys
             sys.stdout.flush()
+            last_file_idx = 0
+            total_files_count = 0
             # tqdm 대신 직접 진행 상황 표시
-            for chunk in self._read_jsonl_files(jsonl_dir):
+            for chunk, file_path, file_idx, total_files in self._read_jsonl_files(jsonl_dir):
                 chunks_batch.append(chunk)
                 total_chunks += 1
+                last_file_idx = file_idx
+                total_files_count = total_files
                 
                 # 1,000개마다 전체 진행 상황 로그
                 if total_chunks % 5000 == 0:
@@ -205,7 +209,6 @@ class JSONLToPostgresLoader:
                 
                 # 배치 크기에 도달하면 처리
                 if len(chunks_batch) >= self.batch_size:
-                    batch_start_time = time.time()
                     try:
                         self._insert_chunks_batch(chunks_batch)
                         
@@ -213,15 +216,14 @@ class JSONLToPostgresLoader:
                         self.conn.commit()
                         
                         # 파일 처리 진행률 계산
-                        current_file_idx = len([f for f in jsonl_dir.glob("*_chunks.jsonl") if f.name <= file_path.name])
-                        total_files = len(list(jsonl_dir.glob("*_chunks.jsonl")))
-                        file_progress = (current_file_idx / total_files) * 100
+                        current_file_idx = last_file_idx
+                        file_progress = (current_file_idx / total_files_count) * 100 if total_files_count else 0
                         
                         # 전체 청크 수 추정 (파일당 평균 1000개 청크로 추정)
-                        estimated_total_chunks = total_files * 1000
-                        chunk_progress = (total_chunks / estimated_total_chunks) * 100
+                        estimated_total_chunks = total_files_count * 1000
+                        chunk_progress = (total_chunks / estimated_total_chunks) * 100 if estimated_total_chunks else 0
                         
-                        print(f"📊 파일 진행: {current_file_idx}/{total_files} ({file_progress:.1f}%) | 청크: ({total_chunks:,}/{estimated_total_chunks:,}) {chunk_progress:.1f}%")
+                        print(f"📊 파일 진행: {current_file_idx}/{total_files_count} ({file_progress:.1f}%) | 청크: ({total_chunks:,}/{estimated_total_chunks:,}) {chunk_progress:.1f}%")
                         import sys
                         sys.stdout.flush()
                         

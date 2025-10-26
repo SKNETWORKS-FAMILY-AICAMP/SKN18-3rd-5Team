@@ -8,7 +8,7 @@ PostgreSQL + pgvector 벡터 스토어 (개선된 버전)
 import logging
 from typing import List, Dict, Any, Optional, Union
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, execute_values
 import numpy as np
 
 from ..models.config import EmbeddingModelType
@@ -169,7 +169,7 @@ class PgVectorStore(VectorStoreInterface):
 
         query = f"""
             INSERT INTO {table_name} (chunk_id, embedding)
-            VALUES (%s, %s)
+            VALUES %s
             ON CONFLICT (chunk_id) DO UPDATE SET
                 embedding = EXCLUDED.embedding,
                 created_at = NOW()
@@ -182,24 +182,29 @@ class PgVectorStore(VectorStoreInterface):
         )
 
         try:
+            if not chunk_ids:
+                return 0
+
             cursor = self._get_cursor()
 
-            # 배치 삽입
+            # 벡터를 문자열로 변환해 한번에 삽입
+            values = []
             for chunk_id, emb in zip(chunk_ids, embeddings):
-                # 벡터를 리스트로 변환
                 if isinstance(emb, np.ndarray):
                     emb_list = emb.tolist()
                 elif hasattr(emb, 'tolist'):
                     emb_list = emb.tolist()
                 else:
                     emb_list = emb
-                
-                emb_str = '[' + ','.join(map(str, emb_list)) + ']'
-                cursor.execute(query, (chunk_id, emb_str))
 
+                emb_str = '[' + ','.join(map(str, emb_list)) + ']'
+                values.append((chunk_id, emb_str))
+
+            execute_values(cursor, query, values, page_size=len(values))
             self.conn.commit()
-            logger.info(f"Inserted {len(chunk_ids)} embeddings into {table_name}")
-            return len(chunk_ids)
+            inserted_count = len(values)
+            logger.info(f"Inserted {inserted_count} embeddings into {table_name}")
+            return inserted_count
 
         except Exception as e:
             self.conn.rollback()
@@ -238,8 +243,12 @@ class PgVectorStore(VectorStoreInterface):
                   AND c.natural_text != ''
             """
         else:
-            # 모든 청크 조회
-            query = "SELECT id FROM chunks"
+            # 모든 natural text 값이 있는 row의 청크 조회
+            query = """
+                SELECT id FROM chunks
+                WHERE natural_text IS NOT NULL
+                  AND natural_text != ''
+            """
         
         if limit:
             query += f" LIMIT {limit}"
@@ -258,6 +267,127 @@ class PgVectorStore(VectorStoreInterface):
         except Exception as e:
             logger.error(f"Failed to get chunk IDs: {e}")
             return []
+
+    def count_chunks_to_process(
+        self,
+        model_type: Optional[EmbeddingModelType],
+        skip_existing: bool = True
+    ) -> int:
+        """처리할 청크 수를 조회 (스킵 옵션 반영)"""
+        context = self.error_handler.create_context(
+            "count_chunks_to_process",
+            model_type=model_type.value if model_type else None,
+            additional_info={'skip_existing': skip_existing}
+        )
+
+        try:
+            cursor = self._get_cursor()
+
+            base_where = [
+                "c.natural_text IS NOT NULL",
+                "c.natural_text != ''"
+            ]
+
+            if skip_existing and model_type is not None:
+                table_name = self.config.get_table_name(model_type)
+                query = f"""
+                    SELECT COUNT(*) as cnt
+                    FROM chunks c
+                    LEFT JOIN {table_name} e ON c.chunk_id = e.chunk_id
+                    WHERE {' AND '.join(base_where)} 
+                      AND e.chunk_id IS NULL
+                """
+            else:
+                query = f"""
+                    SELECT COUNT(*) as cnt
+                    FROM chunks c
+                    WHERE {' AND '.join(base_where)}
+                """
+
+            cursor.execute(query)
+            result = cursor.fetchone()
+            return result['cnt'] if result else 0
+
+        except Exception as e:
+            logger.error(f"Failed to count chunks: {e}")
+            return 0
+
+    def iter_chunks_to_process(
+        self,
+        model_type: Optional[EmbeddingModelType],
+        skip_existing: bool = True,
+        limit: Optional[int] = None,
+        fetch_size: int = 1000
+    ):
+        """
+        처리할 청크를 스트리밍으로 순회
+
+        Args:
+            model_type: 임베딩 모델 타입
+            skip_existing: 이미 임베딩 된 청크 제외 여부
+            limit: 최대 반환 개수
+            fetch_size: 데이터베이스 fetch 크기
+        """
+        context = self.error_handler.create_context(
+            "iter_chunks_to_process",
+            model_type=model_type.value if model_type else None,
+            additional_info={'skip_existing': skip_existing, 'limit': limit, 'fetch_size': fetch_size}
+        )
+
+        fetch_size = max(fetch_size, 1)
+        cursor = None
+
+        try:
+            cursor = self._get_cursor()
+
+            base_where = [
+                "c.natural_text IS NOT NULL",
+                "c.natural_text != ''"
+            ]
+            params: List[Any] = []
+
+            if skip_existing and model_type is not None:
+                table_name = self.config.get_table_name(model_type)
+                join_clause = f"LEFT JOIN {table_name} e ON c.chunk_id = e.chunk_id"
+                base_where.append("e.chunk_id IS NULL")
+            else:
+                join_clause = ""
+
+            where_clause = " AND ".join(base_where)
+
+            query = f"""
+                SELECT 
+                    c.id,
+                    c.chunk_id,
+                    c.natural_text,
+                    c.chunk_type,
+                    c.metadata
+                FROM chunks c
+                {join_clause}
+                WHERE {where_clause}
+                ORDER BY c.id
+            """
+
+            if limit is not None:
+                query += " LIMIT %s"
+                params.append(limit)
+
+            cursor.execute(query, params)
+
+            while True:
+                rows = cursor.fetchmany(fetch_size)
+                if not rows:
+                    break
+
+                for row in rows:
+                    yield row
+
+        except Exception as e:
+            logger.error(f"Failed to iterate chunks: {e}", exc_info=True)
+            raise
+        finally:
+            if cursor:
+                cursor.close()
 
     def get_embedding_count(self, model_type: EmbeddingModelType) -> int:
         """
