@@ -71,6 +71,7 @@ def _rewrite_with_metadata(question: str, temporal_info: Optional[TemporalInfo])
         ticker = info.get("stock_code")
         report_date = _format_report_date(info.get("rcept_dt", ""))
         report_name = info.get("report_nm", "")
+        corp_name = info.get("corp_name") or info.get("name") or ""
 
         details: List[str] = []
         if ticker:
@@ -80,10 +81,12 @@ def _rewrite_with_metadata(question: str, temporal_info: Optional[TemporalInfo])
         if report_name:
             details.append(report_name)
 
-        if details:
-            meta_chunks.append(f"{info['name']} ({', '.join(details)})")
-        else:
-            meta_chunks.append(info["name"])
+        if corp_name and details:
+            meta_chunks.append(f"{corp_name} ({', '.join(details)})")
+        elif corp_name:
+            meta_chunks.append(corp_name)
+        elif details:
+            meta_chunks.append(", ".join(details))
 
     if not meta_chunks:
         return question
@@ -133,7 +136,7 @@ def _match_companies(question: str) -> List[Dict[str, str]]:
         info = stock_map.get(code)
         if not info:
             continue
-        key = info.get("stock_code") or info.get("name")
+        key = info.get("stock_code") or info.get("corp_name") or info.get("name")
         if key and key not in seen:
             matches.append(info)
             seen.add(key)
@@ -142,7 +145,7 @@ def _match_companies(question: str) -> List[Dict[str, str]]:
     for alias_cf, payload in alias_map.items():
         info = payload["info"]
         alias_no_space = payload["no_space"]
-        key = info.get("stock_code") or info.get("name")
+        key = info.get("stock_code") or info.get("corp_name") or info.get("name")
         if not key or key in seen:
             continue
         if alias_cf and alias_cf in question_cf:
@@ -177,7 +180,7 @@ def _corp_lookup() -> Tuple[Dict[str, AliasEntry], Dict[str, Dict[str, str]]]:
 
     corp_records: Dict[str, Dict[str, str]] = {}
     for item in payload.get("list", []):
-        corp_name = (item.get("corp_name") or "").strip()
+        corp_name = (item.get("corp_name") or item.get("name") or "").strip()
         if not corp_name:
             continue
         corp_code = (item.get("corp_code") or "").strip()
@@ -187,7 +190,7 @@ def _corp_lookup() -> Tuple[Dict[str, AliasEntry], Dict[str, Dict[str, str]]]:
         report_nm = (item.get("report_nm") or "").strip()
 
         candidate = {
-            "name": corp_name,
+            "corp_name": corp_name,
             "stock_code": stock_code,
             "rcept_dt": rcept_dt,
             "report_nm": report_nm,
@@ -199,8 +202,11 @@ def _corp_lookup() -> Tuple[Dict[str, AliasEntry], Dict[str, Dict[str, str]]]:
     records = sorted(corp_records.values(), key=lambda r: r["name"])
 
     for record in records:
-        aliases = _generate_aliases(record["name"])
+        corp_name = record.get("corp_name") or ""
+        aliases = _generate_aliases(corp_name)
         record_entry = dict(record)
+        # 호환성을 위해 'name' 키도 유지
+        record_entry.setdefault("name", corp_name)
 
         if record_entry["stock_code"]:
             stock_map.setdefault(record_entry["stock_code"], record_entry)
