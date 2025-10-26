@@ -14,11 +14,19 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 
 HF_REPO_ID    = os.getenv("MODEL_DIR_ADAPTER", "./models/adapters/llama3.2-3b-ko-report-lora")  # LoRA 경로(로컬)
 HF_BASE_MODEL = os.getenv("MODEL_DIR_BASE", "./models/base/Llama-3.2-3B")              # 베이스 경로(로컬)
-HF_DEVICE_MAP = os.getenv("HF_DEVICE_MAP", "auto")     # "auto" | "cuda" | "cpu"
-HF_DTYPE      = os.getenv("HF_DTYPE", "bfloat16")      # "float16" | "bfloat16" | "float32"
-HF_4BIT       = os.getenv("HF_4BIT", "false").lower() == "true"
 HF_TRUST      = os.getenv("HF_TRUST_REMOTE_CODE", "false").lower() == "true"
 HF_TOKEN      = os.getenv("HUGGINGFACE_HUB_TOKEN")     # 오프라인이면 없어도 됨
+
+IS_RUNPOD = os.getenv("IS_RUNPOD", "false").lower() == "true"
+
+if IS_RUNPOD:
+    HF_DEVICE_MAP = os.getenv("HF_DEVICE_MAP", "cuda")
+    HF_DTYPE = os.getenv("HF_DTYPE", "bfloat16")
+    HF_4BIT = os.getenv("HF_4BIT", "false").lower() == "true"
+else:
+    HF_DEVICE_MAP = os.getenv("HF_DEVICE_MAP", "cpu")
+    HF_DTYPE = os.getenv("HF_DTYPE", "float32")
+    HF_4BIT = os.getenv("HF_4BIT", "false").lower() == "true"
 
 print("[LLM] HF_REPO_ID =", HF_REPO_ID)
 print("[LLM] HF_BASE_MODEL =", HF_BASE_MODEL)
@@ -28,6 +36,7 @@ _tokenizer = None
 _model = None
 
 def _torch_dtype():
+    """환경 설정에 맞는 torch dtype을 반환 (CPU면 float32 강제)"""
     # CPU면 float32로 강제 (bf16/float16 미지원 환경 방지)
     if HF_DEVICE_MAP == "cpu":
         return torch.float32
@@ -38,9 +47,11 @@ def _torch_dtype():
     }.get(HF_DTYPE, torch.bfloat16)
 
 def _hf_auth_kwargs() -> Dict[str, str]:
+    """허깅페이스 인증 토큰이 있을 경우 kwargs 형태로 반환"""
     return {"token": HF_TOKEN} if HF_TOKEN else {}
 
 def _load_tokenizer(path_or_id: str):
+    """지정된 경로에서 토크나이저를 로드"""
     return AutoTokenizer.from_pretrained(
         path_or_id,
         use_fast=True,
@@ -49,6 +60,7 @@ def _load_tokenizer(path_or_id: str):
     )
 
 def _load_model_lora(base_path: str, lora_path: str):
+    """베이스 모델을 로드하고 LoRA 어댑터를 적용해 파인튜닝 모델 생성"""
     kwargs = {}
     if HF_4BIT:
         from transformers import BitsAndBytesConfig
@@ -86,6 +98,7 @@ def _load_model_lora(base_path: str, lora_path: str):
     return model
 
 def _load():
+    """토크나이저와 LoRA 적용 모델을 지연 로딩 후 캐싱"""
     global _tokenizer, _model
     if _tokenizer is not None and _model is not None:
         return _tokenizer, _model
@@ -101,6 +114,7 @@ def _load():
     return _tokenizer, _model
 
 def _apply_chat_template_safe(tokenizer, messages) -> torch.Tensor:
+    """chat_template 적용 실패 시 수동 포맷으로 프롬프트를 구성"""
     try:
         return tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, return_tensors="pt"
