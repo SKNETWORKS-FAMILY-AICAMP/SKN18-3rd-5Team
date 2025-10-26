@@ -157,7 +157,6 @@ def chat(system: str, user: str, max_tokens: int = 512) -> str:
         input_ids=input_ids,
         attention_mask=attention_mask,
         max_new_tokens=max_tokens,
-        min_new_tokens=max(16, min(max_tokens // 2, max_tokens - 4)),
         do_sample=True,
         temperature=0.7,
         top_p=0.9,
