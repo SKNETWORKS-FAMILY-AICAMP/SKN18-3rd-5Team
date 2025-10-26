@@ -310,9 +310,11 @@ def _format_langgraph_response(state: dict) -> str:
     if citations:
         lines = ["\n\n📚 참고 자료"]
         for item in citations:
-            title = item.get("title", "출처 미상")
-            date = item.get("date", "날짜 미상")
-            report_id = item.get("report_id", "ref")
+            corp_name = item.get("corp_name") or ""
+            document_name = item.get("document_name") or ""
+            title = item.get("title") or document_name or corp_name or "출처 미상"
+            date = item.get("date") or item.get("rcept_dt") or "날짜 미상"
+            report_id = item.get("report_id") or corp_name or item.get("chunk_id") or "ref"
             url = item.get("url", "")
             line = f"- {title} ({date}) [{report_id}]"
             if url:
