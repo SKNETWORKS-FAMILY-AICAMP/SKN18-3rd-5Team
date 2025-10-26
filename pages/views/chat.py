@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import streamlit as st
 from datetime import datetime
 from service.chat_service import ChatService
@@ -100,6 +101,15 @@ def render_chat_panel() -> None:
         role = message["role"]
         with chat_container:
             st.chat_message(name=role, avatar=_avatar_for(role)).write(message["content"])
+
+    if st.session_state.get("latest_langgraph_state"):
+        with st.expander("LangGraph 상태 (디버그)", expanded=False):
+            debug_state = _summarize_state(st.session_state["latest_langgraph_state"])
+            st.text_area(
+                "state",
+                json.dumps(debug_state, ensure_ascii=False, indent=2),
+                height=320,
+            )
 
     # 채팅 입력창
     user_input = st.chat_input("질문을 입력하세요.")
@@ -216,6 +226,7 @@ def _handle_user_input(user_input: str) -> None:
         lg_state = app.invoke({"question": user_input, "user_level": user_level})
         assistant_reply = _format_langgraph_response(lg_state)
         st.session_state["latest_langgraph_state"] = lg_state
+        print(f"[Chat] assistant_reply={assistant_reply[:200]!r}")
         _append_message("assistant", assistant_reply)
     except Exception as exc:
         _append_message("assistant", "죄송합니다. 답변 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
@@ -265,6 +276,24 @@ def _load_saved_sessions() -> None:
 
 def _avatar_for(role: str) -> str:
     return "🧑‍💻" if role == "user" else "🤖"
+
+
+def _summarize_state(state: dict, str_limit: int = 200) -> dict:
+    def _summarize(value):
+        if isinstance(value, str):
+            text = value.strip()
+            return text if len(text) <= str_limit else text[:str_limit] + "…"
+        if isinstance(value, list):
+            items = [_summarize(item) for item in value[:3]]
+            if len(value) > 3:
+                items.append(f"… (+{len(value) - 3} more)")
+            return items
+        if isinstance(value, dict):
+            preview = list(value.items())[:6]
+            return {k: _summarize(v) for k, v in preview}
+        return value
+
+    return {k: _summarize(v) for k, v in state.items()}
 
 
 def _get_langgraph_app():

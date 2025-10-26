@@ -5,6 +5,23 @@ from service.llm.llm_client import chat
 from service.llm.prompt_templates import build_system_prompt, build_user_prompt
 
 
+def _fallback_answer(question: str, context: str) -> str:
+    """LLM이 비어 있는 답을 돌려줄 때 최소한의 요약 문구를 생성."""
+    if context:
+        snippet = context.strip().splitlines()
+        preview = " ".join(line.strip() for line in snippet if line.strip())[:300]
+        if preview:
+            return (
+                "죄송합니다. 모델이 답변을 생성하지 못했습니다. "
+                "다음 컨텍스트를 참고해 수동으로 확인해 주세요:\n"
+                f"{preview}"
+            )
+    return (
+        "죄송합니다. 현재 질문에 대한 답변을 생성하지 못했습니다. "
+        "잠시 후 다시 시도해 주세요."
+    )
+
+
 def run(state: QAState) -> QAState:
     """
     역할:
@@ -45,6 +62,11 @@ def run(state: QAState) -> QAState:
         state["draft_answer"] = answer
 
         print(f"[Generate] complete (answer_chars={len(answer)})")
+        print(f"[Generate] preview={answer[:200]!r}")
+        if not answer.strip():
+            fallback = _fallback_answer(question, context)
+            state["draft_answer"] = fallback
+            print(f"[Generate] fallback engaged (chars={len(fallback)})")
     except Exception as exc:
         # 예외 발생 시 로깅 및 안내 문구 반환
         print(f"[Generate] error={exc}")
