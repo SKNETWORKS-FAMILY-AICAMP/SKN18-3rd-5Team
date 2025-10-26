@@ -244,6 +244,8 @@ models/adapters/*
 models/base/*
 **/.cache/
 service/rag/results/*
+embeddings_multilingual_e5_small.dump
+embeddings_with_chunks.dump
 
 service/fine_tuning/llama_factory/dataset/*
 !service/fine_tuning/llama_factory/dataset/.gitkeep
