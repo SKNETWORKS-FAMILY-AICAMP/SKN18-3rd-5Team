@@ -126,8 +126,8 @@
 
 ## 📁 파일 위치
 
-- **검색 결과 JSON**: `service/rag_jsonl/results/rag_success_test_20251025_231456.json`
-- **이전 테스트 결과**: `service/rag_jsonl/results/` 폴더 내
+- **검색 결과 JSON**: `service/rag/results/rag_success_test_20251025_231456.json`
+- **이전 테스트 결과**: `service/rag/results/` 폴더 내
 
 ---
 

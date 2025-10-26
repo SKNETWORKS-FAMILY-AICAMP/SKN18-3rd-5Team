@@ -24,8 +24,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from service.rag_jsonl.vectorstore.pgvector_store import PgVectorStore
-from service.rag_jsonl.models.loader import ModelFactory, EmbeddingModelType
+from service.rag.vectorstore.pgvector_store import PgVectorStore
+from service.rag.models.loader import ModelFactory, EmbeddingModelType
 from config.vector_database import get_vector_db_config
 
 # 로깅 설정
@@ -164,7 +164,7 @@ def download_models(model: str = "all"):
                     
                     # API 연결 테스트
                     try:
-                        from service.rag_jsonl.models.fine5_api_encoder import FinE5APIEncoder
+                        from service.rag.models.fine5_api_encoder import FinE5APIEncoder
                         encoder = FinE5APIEncoder(api_key=api_key, model_name='abacinlp-text-v1')
                         test_embedding = encoder.encode_query("테스트")
                         logger.info(f"✅ FinE5 API 연결 성공! 임베딩 차원: {len(test_embedding)}")

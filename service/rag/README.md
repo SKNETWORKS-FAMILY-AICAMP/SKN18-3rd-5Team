@@ -16,7 +16,7 @@ JSONL 파일을 직접 사용하는 RAG (Retrieval-Augmented Generation) 시스�
 
 ```bash
 # JSONL 파일을 PostgreSQL에 로드
-cd service/etl/loader_jsonl
+cd service/etl/loader
 python loader_cli.py run --jsonl-dir ../../../data/transform/final
 ```
 
@@ -24,28 +24,28 @@ python loader_cli.py run --jsonl-dir ../../../data/transform/final
 
 ```bash
 # RAG 시스템으로 검색
-cd service/rag_jsonl/cli
-python rag_jsonl_cli.py search --query "삼성전자 매출" --top-k 5
+cd service/rag/cli
+python rag_cli.py search --query "삼성전자 매출" --top-k 5
 ```
 
 ### 3. 통계 확인
 
 ```bash
 # 시스템 통계 조회
-python rag_jsonl_cli.py stats
+python rag_cli.py stats
 ```
 
 ### 4. RAG 평가 실행
 
 ```bash
 # 통합 RAG 평가 도구 실행
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --top-k 3
 
 # 기업별 필터링 평가
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 5 --corp-filter "삼성전자"
+python -m service.rag.cli.rag_evaluation_tool --top-k 5 --corp-filter "삼성전자"
 
 # 다른 임베딩 모델로 평가
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model kakaobank --top-k 3
 ```
 
 ## 📊 시스템 아키텍처
@@ -53,11 +53,11 @@ python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
 ```
 JSONL Files (data/transform/final/)
     ↓
-JSONL Loader (service/etl/loader_jsonl/)
+JSONL Loader (service/etl/loader/)
     ↓
 PostgreSQL + pgvector
     ↓
-RAG System (service/rag_jsonl/)
+RAG System (service/rag/)
     ↓
 Search Results
 ```
@@ -76,32 +76,32 @@ Search Results
 
 ```bash
 # 기본 검색
-python rag_jsonl_cli.py search --query "AI 기술 개발"
+python rag_cli.py search --query "AI 기술 개발"
 
 # 상위 10개 결과
-python rag_jsonl_cli.py search --query "매출 증가" --top-k 10
+python rag_cli.py search --query "매출 증가" --top-k 10
 
 # 특정 기업만 검색
-python rag_jsonl_cli.py search --query "연구개발비" --corp-filter "삼성전자"
+python rag_cli.py search --query "연구개발비" --corp-filter "삼성전자"
 
 # 최소 유사도 설정
-python rag_jsonl_cli.py search --query "디지털 전환" --min-similarity 0.7
+python rag_cli.py search --query "디지털 전환" --min-similarity 0.7
 
 # 다른 임베딩 모델 사용
-python rag_jsonl_cli.py search --query "ESG 경영" --model kakaobank/kf-deberta-base
+python rag_cli.py search --query "ESG 경영" --model kakaobank/kf-deberta-base
 
 # 검색 결과 저장
-python rag_jsonl_cli.py search --query "지속가능경영" --save-results
+python rag_cli.py search --query "지속가능경영" --save-results
 ```
 
 ### 통계 명령어
 
 ```bash
 # 전체 통계
-python rag_jsonl_cli.py stats
+python rag_cli.py stats
 
 # 특정 모델 통계
-python rag_jsonl_cli.py stats --model kakaobank/kf-deberta-base
+python rag_cli.py stats --model kakaobank/kf-deberta-base
 ```
 
 ### RAG 평가 도구
@@ -112,29 +112,29 @@ python rag_jsonl_cli.py stats --model kakaobank/kf-deberta-base
 
 ```bash
 # 기본 평가 (5개 쿼리, Top-K=3)
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --top-k 3
 
 # 더 많은 결과 검색
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 5
+python -m service.rag.cli.rag_evaluation_tool --top-k 5
 
 # 최소 유사도 설정
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3 --min-similarity 0.7
+python -m service.rag.cli.rag_evaluation_tool --top-k 3 --min-similarity 0.7
 
 # 특정 기업만 평가
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 3 --corp-filter "삼성전자"
+python -m service.rag.cli.rag_evaluation_tool --top-k 3 --corp-filter "삼성전자"
 ```
 
 #### 모델별 평가
 
 ```bash
 # 다국어 모델 (기본값)
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model multilingual-e5-small --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model multilingual-e5-small --top-k 3
 
 # 한국어 금융 특화 모델
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model kakaobank --top-k 3
 
 # 금융 도메인 최고 성능 모델
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model fine5 --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model fine5 --top-k 3
 ```
 
 #### 평가 결과
@@ -186,7 +186,7 @@ python -m service.rag_jsonl.cli.rag_evaluation_tool --model fine5 --top-k 3
 ### 1. 기본 검색
 
 ```bash
-python rag_jsonl_cli.py search --query "삼성전자 매출"
+python rag_cli.py search --query "삼성전자 매출"
 ```
 
 **결과:**
@@ -206,13 +206,13 @@ python rag_jsonl_cli.py search --query "삼성전자 매출"
 ### 2. 기업별 필터링
 
 ```bash
-python rag_jsonl_cli.py search --query "연구개발비" --corp-filter "SK하이닉스"
+python rag_cli.py search --query "연구개발비" --corp-filter "SK하이닉스"
 ```
 
 ### 3. 고유사도 검색
 
 ```bash
-python rag_jsonl_cli.py search --query "AI 반도체" --min-similarity 0.8
+python rag_cli.py search --query "AI 반도체" --min-similarity 0.8
 ```
 
 ## 🎯 사용 사례
@@ -221,45 +221,45 @@ python rag_jsonl_cli.py search --query "AI 반도체" --min-similarity 0.8
 
 ```bash
 # 전체 시스템 성능 평가
-python -m service.rag_jsonl.cli.rag_evaluation_tool --top-k 5
+python -m service.rag.cli.rag_evaluation_tool --top-k 5
 
 # 특정 기업의 검색 성능 평가
-python -m service.rag_jsonl.cli.rag_evaluation_tool --corp-filter "삼성전자" --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --corp-filter "삼성전자" --top-k 3
 
 # 모델별 성능 비교
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model multilingual-e5-small --top-k 3
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model kakaobank --top-k 3
-python -m service.rag_jsonl.cli.rag_evaluation_tool --model fine5 --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model multilingual-e5-small --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model kakaobank --top-k 3
+python -m service.rag.cli.rag_evaluation_tool --model fine5 --top-k 3
 ```
 
 ### 2. 기업 정보 검색
 
 ```bash
 # 특정 기업의 재무 정보
-python rag_jsonl_cli.py search --query "매출 증가율" --corp-filter "LG전자"
+python rag_cli.py search --query "매출 증가율" --corp-filter "LG전자"
 
 # ESG 관련 정보
-python rag_jsonl_cli.py search --query "환경 경영" --corp-filter "현대자동차"
+python rag_cli.py search --query "환경 경영" --corp-filter "현대자동차"
 ```
 
 ### 2. 산업 분석
 
 ```bash
 # 반도체 산업 동향
-python rag_jsonl_cli.py search --query "반도체 시장 전망"
+python rag_cli.py search --query "반도체 시장 전망"
 
 # 자동차 산업 동향
-python rag_jsonl_cli.py search --query "전기차 시장"
+python rag_cli.py search --query "전기차 시장"
 ```
 
 ### 3. 기술 동향 분석
 
 ```bash
 # AI 기술 개발
-python rag_jsonl_cli.py search --query "인공지능 기술"
+python rag_cli.py search --query "인공지능 기술"
 
 # 디지털 전환
-python rag_jsonl_cli.py search --query "디지털 혁신"
+python rag_cli.py search --query "디지털 혁신"
 ```
 
 ## 🔧 고급 설정
@@ -268,13 +268,13 @@ python rag_jsonl_cli.py search --query "디지털 혁신"
 
 ```bash
 # 다국어 모델 (기본값)
-python rag_jsonl_cli.py search --query "한국어 쿼리" --model intfloat/multilingual-e5-small
+python rag_cli.py search --query "한국어 쿼리" --model intfloat/multilingual-e5-small
 
 # 한국어 금융 특화 모델
-python rag_jsonl_cli.py search --query "금융 쿼리" --model kakaobank/kf-deberta-base
+python rag_cli.py search --query "금융 쿼리" --model kakaobank/kf-deberta-base
 
 # 금융 도메인 최고 성능 모델
-python rag_jsonl_cli.py search --query "복잡한 금융 쿼리" --model FinanceMTEB/FinE5
+python rag_cli.py search --query "복잡한 금융 쿼리" --model FinanceMTEB/FinE5
 ```
 
 ### 2. 배치 크기 조정

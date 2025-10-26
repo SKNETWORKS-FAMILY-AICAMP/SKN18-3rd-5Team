@@ -16,7 +16,7 @@ from enum import Enum
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from service.rag_jsonl.models.config import EmbeddingModelType
+from service.rag.models.config import EmbeddingModelType
 
 
 @dataclass
