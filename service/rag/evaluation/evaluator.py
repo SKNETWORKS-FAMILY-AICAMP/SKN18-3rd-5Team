@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EvaluationConfig:
     """평가 설정"""
-    queries_path: str = "service/rag/cli/evaluation_queries.json"
+    queries_path: str = "evaluation_queries.json"
     top_k: int = 5
     enable_generation: bool = False
     model_type: EmbeddingModelType = EmbeddingModelType.MULTILINGUAL_E5_SMALL
