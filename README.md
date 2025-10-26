@@ -85,80 +85,80 @@ docker-compose up -d
 
 ```bash
 # 모든 임베딩 모델 다운로드
-python service/etl/loader_jsonl/loader_cli.py download
+python service/etl/loader/loader_cli.py download
 
 # E5 모델만 다운로드
-python service/etl/loader_jsonl/loader_cli.py download --model e5
+python service/etl/loader/loader_cli.py download --model e5
 
 # KakaoBank 모델만 다운로드
-python service/etl/loader_jsonl/loader_cli.py download --model kakaobank
+python service/etl/loader/loader_cli.py download --model kakaobank
 
 # FinE5 모델 설정 (API 전용)
-python service/etl/loader_jsonl/loader_cli.py download --model fine5
+python service/etl/loader/loader_cli.py download --model fine5
 ```
 
 #### 2. 데이터베이스 관리
 
 ```bash
 # 데이터베이스 연결 테스트
-python service/etl/loader_jsonl/loader_cli.py db test
+python service/etl/loader/loader_cli.py db test
 
 # 테이블 목록 조회
-python service/etl/loader_jsonl/loader_cli.py db list
+python service/etl/loader/loader_cli.py db list
 
 # 스키마 생성 (테이블 생성)
-python service/etl/loader_jsonl/loader_cli.py db create
+python service/etl/loader/loader_cli.py db create
 ```
 
 #### 2. 데이터 삭제 (TRUNCATE)
 
 ```bash
 # 문서 테이블 데이터 삭제
-python service/etl/loader_jsonl/loader_cli.py truncate doc
+python service/etl/loader/loader_cli.py truncate doc
 
 # 임베딩 테이블 데이터 삭제
-python service/etl/loader_jsonl/loader_cli.py truncate vector
+python service/etl/loader/loader_cli.py truncate vector
 
 # 모든 테이블 데이터 삭제
-python service/etl/loader_jsonl/loader_cli.py truncate all
+python service/etl/loader/loader_cli.py truncate all
 ```
 
 #### 3. 데이터 로드
 
 ```bash
 # JSONL 파일을 chunks 테이블에 로드
-python service/etl/loader_jsonl/loader_cli.py load doc
+python service/etl/loader/loader_cli.py load doc
 
 # E5 모델로 임베딩 생성 및 저장
-python service/etl/loader_jsonl/loader_cli.py load vector --model e5
+python service/etl/loader/loader_cli.py load vector --model e5
 
 # KakaoBank 모델로 임베딩 생성 (1000개 제한)
-python service/etl/loader_jsonl/loader_cli.py load vector --model kakaobank --limit 1000
+python service/etl/loader/loader_cli.py load vector --model kakaobank --limit 1000
 
 # 배치 크기 조정
-python service/etl/loader_jsonl/loader_cli.py load vector --model e5 --batch-size 50
+python service/etl/loader/loader_cli.py load vector --model e5 --batch-size 50
 ```
 
 ### 전체 워크플로우
 
 ```bash
 # 1. 모델 다운로드 (처음 실행 시 필수)
-python service/etl/loader_jsonl/loader_cli.py download
+python service/etl/loader/loader_cli.py download
 
 # 2. 데이터베이스 설정
-python service/etl/loader_jsonl/loader_cli.py db create
+python service/etl/loader/loader_cli.py db create
 
 # 3. 문서 로드
-python service/etl/loader_jsonl/loader_cli.py load doc
+python service/etl/loader/loader_cli.py load doc
 
 # 4. 임베딩 생성 (E5 모델)
-python service/etl/loader_jsonl/loader_cli.py load vector --model e5
+python service/etl/loader/loader_cli.py load vector --model e5
 
 # 5. 임베딩 생성 (KakaoBank 모델)
-python service/etl/loader_jsonl/loader_cli.py load vector --model kakaobank
+python service/etl/loader/loader_cli.py load vector --model kakaobank
 
 # 6. 상태 확인
-python service/etl/loader_jsonl/loader_cli.py db list
+python service/etl/loader/loader_cli.py db list
 ```
 
 ### 지원하는 임베딩 모델

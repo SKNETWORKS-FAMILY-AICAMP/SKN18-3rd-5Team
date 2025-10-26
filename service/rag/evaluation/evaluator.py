@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EvaluationConfig:
     """평가 설정"""
-    queries_path: str = "service/rag_jsonl/cli/evaluation_queries.json"
+    queries_path: str = "service/rag/cli/evaluation_queries.json"
     top_k: int = 5
     enable_generation: bool = False
     model_type: EmbeddingModelType = EmbeddingModelType.MULTILINGUAL_E5_SMALL
-    output_dir: str = "service/rag_jsonl/results"
+    output_dir: str = "service/rag/results"
     save_detailed_results: bool = True
     save_to_db: bool = True  # DB 저장 여부
     db_config: Optional[Dict[str, str]] = None  # DB 설정
@@ -73,7 +73,7 @@ class RAGEvaluator:
     def _load_evaluation_queries(self) -> List[Dict[str, Any]]:
         """평가 쿼리 로드"""
         # 프로젝트 루트를 기준으로 경로 계산
-        project_root = Path(__file__).parents[3]  # service/rag_jsonl/evaluation/ -> project_root
+        project_root = Path(__file__).parents[3]  # service/rag/evaluation/ -> project_root
         queries_path = project_root / self.config.queries_path
         
         try:
