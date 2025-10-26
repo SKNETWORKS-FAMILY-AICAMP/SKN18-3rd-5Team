@@ -6,9 +6,11 @@ textColor="#000000"
 primaryColor="#ffffff"
 
 [server]
-# 런팟용 설정
 port = 8501
+# [로컬 개발 시]
 address = "localhost"
+# [런팟(Lunpot, 도커/클라우드 등 외부접속 필요 환경) 배포 시 아래 설정 사용]
+#address = "0.0.0.0"
 enableCORS = false
 enableXsrfProtection = false
 enableWebsocketCompression = false
