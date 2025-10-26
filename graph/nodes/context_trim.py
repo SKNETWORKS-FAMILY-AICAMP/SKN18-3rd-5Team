@@ -24,6 +24,9 @@ def _extract_citations(docs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         url = doc.get("url") or meta.get("url", "")
         title = doc.get("title") or meta.get("title", "")
         chunk_id = doc.get("chunk_id") or meta.get("chunk_id", "")
+        corp_name = doc.get("corp_name") or meta.get("corp_name", "")
+        document_name = doc.get("document_name") or meta.get("document_name", "")
+        rcept_dt = doc.get("rcept_dt") or meta.get("rcept_dt", "")
         citations.append(
             {
                 "report_id": report_id or "",
@@ -31,6 +34,9 @@ def _extract_citations(docs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
                 "url": url or "",
                 "title": title or "",
                 "chunk_id": chunk_id or "",
+                "corp_name": corp_name or "",
+                "document_name": document_name or "",
+                "rcept_dt": rcept_dt or "",
             }
         )
     return citations

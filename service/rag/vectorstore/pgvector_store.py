@@ -96,6 +96,7 @@ class PgVectorStore(VectorStoreInterface):
         emb_str = '[' + ','.join(map(str, emb_list)) + ']'
 
         # 유사도 검색 쿼리 (pgvector <=> 연산자 사용)
+        # chunks 테이블에서 필요한 모든 메타데이터 필드 추출
         query = f"""
             SELECT
                 c.id as chunk_db_id,
@@ -104,6 +105,12 @@ class PgVectorStore(VectorStoreInterface):
                 c.metadata->>'corp_name' as corp_name,
                 c.metadata->>'document_name' as document_name,
                 c.metadata->>'doc_type' as doc_type,
+                c.metadata->>'rcept_dt' as rcept_dt,
+                c.metadata->>'report_id' as report_id,
+                c.metadata->>'date' as date,
+                c.metadata->>'title' as title,
+                c.metadata->>'url' as url,
+                c.metadata->>'doc_id' as doc_id,
                 c.metadata,
                 (1 - (e.embedding <=> %s::vector)) as similarity
             FROM {table_name} e
@@ -128,19 +135,20 @@ class PgVectorStore(VectorStoreInterface):
             search_results = []
             for row in results:
                 metadata = row.get('metadata') or {}
+                # SELECT한 직접 필드 사용 (우선), 없으면 metadata에서 가져오기
                 result = SearchResult(
                     chunk_id=row['chunk_id'],
                     chunk_db_id=row['chunk_db_id'],
                     content=row['content'],
                     similarity=float(row['similarity']),
                     metadata=metadata,
-                    corp_name=row['corp_name'],
-                    document_name=row['document_name'],
-                    doc_type=row['doc_type'],
-                    report_id=metadata.get('report_id'),
-                    date=metadata.get('date'),
-                    title=metadata.get('title'),
-                    url=metadata.get('url'),
+                    corp_name=row.get('corp_name') or metadata.get('corp_name'),
+                    document_name=row.get('document_name') or metadata.get('document_name'),
+                    doc_type=row.get('doc_type') or metadata.get('doc_type'),
+                    report_id=row.get('report_id') or metadata.get('report_id'),
+                    date=row.get('date') or metadata.get('date'),
+                    title=row.get('title') or metadata.get('title'),
+                    url=row.get('url') or metadata.get('url'),
                 )
                 search_results.append(result)
 
