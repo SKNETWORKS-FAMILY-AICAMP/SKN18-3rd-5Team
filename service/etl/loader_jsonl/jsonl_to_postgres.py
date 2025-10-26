@@ -13,7 +13,7 @@ import argparse
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Generator
+from typing import List, Optional, Dict, Any, Generator, Tuple
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
