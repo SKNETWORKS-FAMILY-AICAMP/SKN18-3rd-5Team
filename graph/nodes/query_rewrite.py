@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime
 from functools import lru_cache
@@ -7,6 +8,8 @@ from typing import Dict, List, Optional, Set, Tuple, TypedDict
 
 from graph.state import QAState
 from service.rag.query.temporal_parser import TemporalQueryParser, TemporalInfo
+
+logger = logging.getLogger(__name__)
 
 # 사용자의 자연어 질문을 받아서, 내부적으로 검색 효율을 높이고자
 # 시점(날짜), 티커(종목코드), 회사명 등과 같은 메타데이터를 추출/보강하여
@@ -44,11 +47,15 @@ def _get_temporal_parser() -> TemporalQueryParser:
 def run(state: QAState) -> QAState:
     """질문에서 기업/시간 정보를 추출해 재작성된 질의를 state에 저장"""
     q = (state.get("question") or "").strip()
+    logger.info("QueryRewrite start (question=%s)", q[:120] if q else "")
     temporal_info: Optional[TemporalInfo] = None
     if q:
         temporal_info = _get_temporal_parser().parse(q)
     rewritten = _rewrite_with_metadata(q, temporal_info)
     state["rewritten_query"] = rewritten
+    if temporal_info and temporal_info.filters:
+        logger.info("QueryRewrite temporal filters=%s", temporal_info.filters)
+    logger.info("QueryRewrite complete (rewritten=%s)", rewritten[:120] if rewritten else "")
     return state
 
 
