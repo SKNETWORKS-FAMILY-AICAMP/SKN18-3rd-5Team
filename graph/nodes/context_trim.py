@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, List
 
 from graph.state import QAState
 from service.rag.augmentation.augmenter import DocumentAugmenter
 from service.rag.augmentation.formatters import MarkdownFormatter, PromptFormatter
-
-logger = logging.getLogger(__name__)
 
 
 def _ensure_content_field(documents: List[Dict[str, Any]]) -> None:
@@ -57,7 +54,7 @@ def run(state: QAState) -> QAState:
     max_tokens = state.get("meta", {}).get("max_ctx_tokens", 2000)
     user_level = state.get("user_level", "intermediate")
 
-    logger.info("Building context from %d documents", len(items))
+    print(f"[ContextTrim] start (docs={len(items)}, max_tokens={max_tokens}, level={user_level})")
 
     _ensure_content_field(items)
 
@@ -77,13 +74,11 @@ def run(state: QAState) -> QAState:
         )
         state["context"] = augmented.context_text
         state["citations"] = _extract_citations(augmented.documents)
-        logger.info(
-            "Context built (%d chars, %d citations)",
-            len(augmented.context_text),
-            len(state["citations"]),
+        print(
+            f"[ContextTrim] complete (context_chars={len(augmented.context_text)}, citations={len(state['citations'])})"
         )
     except Exception as exc:
-        logger.error("Error in context_trim: %s", exc)
+        print(f"[ContextTrim] error={exc}")
         fallback = _fallback_context(items, max_tokens)
         state["context"] = fallback["context"]
         state["citations"] = fallback["citations"]

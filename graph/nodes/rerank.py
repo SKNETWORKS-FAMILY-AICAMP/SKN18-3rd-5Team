@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, List
 
 from graph.state import QAState
 from service.rag.retrieval.reranker import CombinedReranker, create_default_reranker
-
-logger = logging.getLogger(__name__)
 
 # 전역으로 RAG 기본 리랭커 구성 (Keyword/Length/Position 조합)
 _DEFAULT_RERANKER: CombinedReranker = create_default_reranker()
@@ -59,7 +56,7 @@ def run(state: QAState) -> QAState:
     top_k = state.get("meta", {}).get("rerank_n") or len(documents)
 
     try:
-        logger.info("Reranking %d documents (top_k=%d)", len(documents), top_k)
+        print(f"[Rerank] start (docs={len(documents)}, top_k={top_k})")
         candidates = _prepare_candidates(documents)
         reranked = _DEFAULT_RERANKER.rerank(
             query=query,
@@ -67,9 +64,9 @@ def run(state: QAState) -> QAState:
             top_k=top_k,
         )
         state["reranked"] = _format_reranked(reranked)
-        logger.info("Rerank completed → %d documents", len(state["reranked"]))
+        print(f"[Rerank] complete (kept={len(state['reranked'])})")
     except Exception as exc:
-        logger.error("Error in rerank: %s", exc)
+        print(f"[Rerank] error={exc}")
         state["reranked"] = documents  # 실패 시 원본 유지
 
     return state

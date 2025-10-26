@@ -1,9 +1,6 @@
-import logging
-
 from graph.state import QAState
 from graph.utils.citations import normalize
 
-logger = logging.getLogger(__name__)
 
 def run(state: QAState) -> QAState:
     """
@@ -21,5 +18,5 @@ def run(state: QAState) -> QAState:
     """
     citations = normalize(state.get("citations", []))
     state["citations"] = citations
-    logger.info("Answer complete (citations=%d)", len(citations))
+    print(f"[Answer] complete (citations={len(citations)})")
     return state

@@ -1,9 +1,6 @@
 from graph.state import QAState
 from service.rag.retrieval.retriever import Retriever
 from service.rag.models.config import EmbeddingModelType
-import logging
-
-logger = logging.getLogger(__name__)
 
 # 전역 초기화 (성능 최적화)
 retriever = Retriever(
@@ -31,7 +28,7 @@ def run(state: QAState) -> QAState:
         k = state["meta"]["top_k"]
         query = state["rewritten_query"]
 
-        logger.info(f"Retrieving documents for query: {query[:100]}...")
+        print(f"[Retrieve] start (top_k={k}, query={query[:100]}...)")
 
         # RAG Retriever 사용
         results = retriever.search(
@@ -43,7 +40,7 @@ def run(state: QAState) -> QAState:
             include_context=True,
         )
 
-        logger.info(f"Retrieved {len(results)} documents")
+        print(f"[Retrieve] fetched={len(results)}")
 
         # 결과를 LangGraph 형식으로 변환
         formatted_results = []
@@ -63,9 +60,10 @@ def run(state: QAState) -> QAState:
             )
 
         state["retrieved"] = formatted_results
+        print(f"[Retrieve] complete (stored={len(formatted_results)})")
         return state
 
     except Exception as e:
-        logger.error(f"Error in retrieve_pg: {e}")
+        print(f"[Retrieve] error={e}")
         state["retrieved"] = []
         return state

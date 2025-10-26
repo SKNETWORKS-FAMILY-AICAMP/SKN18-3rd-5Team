@@ -1,8 +1,4 @@
-import logging
-
 from graph.state import QAState
-
-logger = logging.getLogger(__name__)
 
 def run(state: QAState) -> QAState:
     """
@@ -21,6 +17,6 @@ def run(state: QAState) -> QAState:
     """
     ans = state.get("draft_answer", "")
     state["grounded"] = ("[ref:" in ans)
-    logger.info("GroundingCheck complete (grounded=%s)", state["grounded"])
+    print(f"[GroundingCheck] complete (grounded={state['grounded']})")
     
     return state

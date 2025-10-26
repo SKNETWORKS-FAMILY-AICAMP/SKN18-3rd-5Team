@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import logging
-
 from graph.state import QAState
 from service.llm.llm_client import chat
 from service.llm.prompt_templates import build_system_prompt, build_user_prompt
-
-logger = logging.getLogger(__name__)
 
 
 def run(state: QAState) -> QAState:
@@ -34,7 +30,7 @@ def run(state: QAState) -> QAState:
         question = state.get("question", "")                  # 질문 텍스트
         context = state.get("context", "")                    # RAG 검색 컨텍스트
 
-        logger.info("Generating answer (level=%s, ctx_len=%d)", user_level, len(context))
+        print(f"[Generate] start (level={user_level}, ctx_len={len(context)})")
 
         # 2. 프롬프트 생성
         system_prompt = build_system_prompt(user_level)
@@ -48,10 +44,10 @@ def run(state: QAState) -> QAState:
         )
         state["draft_answer"] = answer
 
-        logger.info("Generated answer (%d chars)", len(answer))
+        print(f"[Generate] complete (answer_chars={len(answer)})")
     except Exception as exc:
         # 예외 발생 시 로깅 및 안내 문구 반환
-        logger.error("Error in generate node: %s", exc)
+        print(f"[Generate] error={exc}")
         state["draft_answer"] = "죄송합니다. 답변 생성 중 오류가 발생했습니다."
 
     return state

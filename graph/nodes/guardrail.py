@@ -1,11 +1,7 @@
-import logging
-
 from graph.state import QAState
 from graph.utils.async_tools import run_sync
 
 DISCLAIMER = "\n\n※ 본 답변은 정보 제공 목적이며 투자 권유가 아닙니다."
-
-logger = logging.getLogger(__name__)
 
 
 def _ensure_disclaimer(answer: str) -> str:
@@ -43,9 +39,9 @@ def run(state: QAState) -> QAState:
         QAState: DISCLAIMER가 반영된 상태 객체
     """
     ans = state.get("draft_answer", "")
-    logger.info("Guardrail start (len=%d)", len(ans))
+    print(f"[Guardrail] start (len={len(ans)})")
     state["draft_answer"] = run_sync(_ensure_disclaimer(ans))
     # 정책 위반 플래그: 향후 비동기 정책 엔진 연계를 고려해 run_sync 사용
     state["policy_flag"] = run_sync(_check_policy(state["draft_answer"]))
-    logger.info("Guardrail complete (disclaimer_appended=%s)", state["draft_answer"].endswith(DISCLAIMER))
+    print(f"[Guardrail] complete (disclaimer_appended={state['draft_answer'].endswith(DISCLAIMER)})")
     return state
