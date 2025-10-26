@@ -148,15 +148,31 @@ def _render_suggested_questions() -> None:
 
     st.markdown(f"### 💡 추천 질문 ({display_level})")
     st.markdown("궁금한 내용을 클릭해보세요!")
+    st.markdown(
+        """
+        <style>
+        .suggested-wrap div[data-testid="column"] div.stButton > button {
+            height: 72px !important;
+            min-height: 72px !important;
+            max-height: 72px !important;
+            white-space: normal !important;
+            line-height: 1.2 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     
     # 2열로 버튼 배치
+    st.markdown('<div class="suggested-wrap">', unsafe_allow_html=True)
     cols = st.columns(2)
     questions = SUGGESTED_QUESTIONS[level]
     for i, question in enumerate(questions):
         col = cols[i % 2]
         with col:
-            if st.button(question, key=f"suggested_{i}", use_container_width=True):
+            if st.button(question, key=f"suggested_{level}_{i}", use_container_width=True):
                 _handle_user_input(question)
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
 
