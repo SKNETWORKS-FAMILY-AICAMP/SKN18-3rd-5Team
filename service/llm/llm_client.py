@@ -12,7 +12,7 @@ load_dotenv()
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "1"
 
-HF_REPO_ID    = os.getenv("MODEL_DIR_ADAPTER", "./models/adapters/Llama-3.2-3B-ko-finetuned")  # LoRA 경로(로컬)
+HF_REPO_ID    = os.getenv("MODEL_DIR_ADAPTER", "./models/adapters/llama3.2-3b-ko-report-lora")  # LoRA 경로(로컬)
 HF_BASE_MODEL = os.getenv("MODEL_DIR_BASE", "./models/base/Llama-3.2-3B")              # 베이스 경로(로컬)
 HF_DEVICE_MAP = os.getenv("HF_DEVICE_MAP", "auto")     # "auto" | "cuda" | "cpu"
 HF_DTYPE      = os.getenv("HF_DTYPE", "bfloat16")      # "float16" | "bfloat16" | "float32"
