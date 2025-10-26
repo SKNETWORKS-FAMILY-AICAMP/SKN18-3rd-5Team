@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-벡터 검색 리트리버
-pgvector를 사용한 유사도 검색 및 결과 후처리
+검색 리트리버 모듈
+기본 Retriever + 하이브리드 Retriever 통합
 """
 
 import logging
 import time
 from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import asyncpg
 
 from ..models.encoder import EmbeddingEncoder
 from ..models.config import EmbeddingModelType
@@ -20,8 +23,19 @@ from ..query.temporal_parser import TemporalQueryParser
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# 기본 Retriever 클래스 (임베딩 인코더 사용)
+# ============================================================================
+
 class Retriever:
-    """통합 검색 리트리버"""
+    """
+    통합 검색 리트리버 (벡터 + 키워드 + 하이브리드)
+    
+    지원 검색 방법:
+    - vector: 벡터 유사도 검색 (의미적 유사성)
+    - keyword: 키워드 Full-Text 검색 (정확한 용어 매칭)
+    - hybrid: 벡터 + 키워드 결합 (RRF/Weighted Sum)
+    """
 
     def __init__(
         self,
@@ -29,7 +43,8 @@ class Retriever:
         db_config: Optional[Dict[str, str]] = None,
         device: Optional[str] = None,
         reranker: Optional[BaseReranker] = None,
-        enable_temporal_filter: bool = True
+        enable_temporal_filter: bool = True,
+        enable_hybrid: bool = True
     ):
         """
         Args:
@@ -38,12 +53,15 @@ class Retriever:
             device: 디바이스 ('cuda', 'cpu', None)
             reranker: 리랭킹 모듈 (선택사항)
             enable_temporal_filter: 시간 필터링 활성화 (기본값: True)
+            enable_hybrid: 하이브리드 검색 활성화 (기본값: True)
         """
         self.model_type = model_type
         self.encoder = EmbeddingEncoder(model_type, device)
         self.vector_store = PgVectorStore(db_config)
         self.reranker = reranker
         self.enable_temporal_filter = enable_temporal_filter
+        self.enable_hybrid = enable_hybrid
+        self.db_config = db_config
         
         # 시간 쿼리 파서 초기화
         if self.enable_temporal_filter:
@@ -54,6 +72,8 @@ class Retriever:
             logger.info(f"Reranker enabled: {self.reranker.name}")
         if self.enable_temporal_filter:
             logger.info(f"Temporal filtering enabled")
+        if self.enable_hybrid:
+            logger.info(f"Hybrid search enabled")
 
     def search(
         self,
@@ -62,10 +82,11 @@ class Retriever:
         min_similarity: float = 0.0,
         include_metadata: bool = True,
         use_reranker: bool = True,
-        include_context: bool = True
+        include_context: bool = True,
+        search_method: str = "vector"
     ) -> List[Dict[str, Any]]:
         """
-        쿼리에 대한 유사도 검색 수행
+        쿼리에 대한 검색 수행 (벡터/키워드/하이브리드)
 
         Args:
             query: 검색 쿼리
@@ -74,6 +95,7 @@ class Retriever:
             include_metadata: 메타데이터 포함 여부
             use_reranker: 리랭킹 사용 여부
             include_context: 앞뒤 문맥 포함 여부 (Context Window Management)
+            search_method: 검색 방법 ("vector", "keyword", "hybrid")
 
         Returns:
             검색 결과 리스트
@@ -91,13 +113,21 @@ class Retriever:
             # 쿼리 임베딩 생성
             query_embedding = self.encoder.encode_query(query)
             
-            # 벡터 검색 수행
-            results = self.vector_store.search_similar(
-                query_embedding=query_embedding,
-                model_type=self.model_type,
-                top_k=top_k,
-                min_similarity=min_similarity
-            )
+            # 검색 방법에 따라 수행
+            if search_method == "keyword":
+                # 키워드 검색만
+                results = self._keyword_search(query, top_k)
+            elif search_method == "hybrid" and self.enable_hybrid:
+                # 하이브리드 검색 (벡터 + 키워드)
+                results = self._hybrid_search(query, query_embedding, top_k, min_similarity)
+            else:
+                # 벡터 검색 (기본값)
+                results = self.vector_store.search_similar(
+                    query_embedding=query_embedding,
+                    model_type=self.model_type,
+                    top_k=top_k,
+                    min_similarity=min_similarity
+                )
             
             # 검색 시간 계산
             search_time = (time.time() - start_time) * 1000  # ms
@@ -112,319 +142,229 @@ class Retriever:
                     'search_time_ms': search_time
                 }
                 
-                if include_metadata and result.metadata:
-                    processed_result['metadata'] = result.metadata
+                # 메타데이터 추가
+                if include_metadata:
+                    processed_result.update({
+                        'report_id': result.report_id,
+                        'date': result.date,
+                        'title': result.title,
+                        'url': result.url,
+                        'metadata': result.metadata
+                    })
                 
                 processed_results.append(processed_result)
             
-            # 문맥 윈도우 추가는 현재 비활성화 (메서드 미구현)
-            # if include_context:
-            #     processed_results = self._enrich_with_context(processed_results)
-            
-            # 리랭킹 적용 (선택사항)
-            if use_reranker and self.reranker:
+            # 리랭킹 적용
+            if use_reranker and self.reranker and processed_results:
                 logger.info(f"Applying reranker: {self.reranker.name}")
-                processed_results = self.reranker.rerank(query, processed_results, top_k)
+                processed_results = self.reranker.rerank(
+                    query=query,
+                    candidates=processed_results,
+                    top_k=top_k
+                )
             
-            # 검색 로그 저장
-            self._log_search(query, query_embedding, processed_results, search_time)
+            # 문맥 윈도우 추가
+            if include_context:
+                processed_results = self._enrich_with_context(processed_results)
             
             logger.info(f"Search completed: {len(processed_results)} results in {search_time:.2f}ms")
             return processed_results
             
         except Exception as e:
             logger.error(f"Search failed: {e}")
-            raise
+            return []
 
-    def search_with_reranking(
+    def search_only(
         self,
         query: str,
         top_k: int = 5,
-        min_similarity: float = 0.0,
-        rerank_top_k: int = 20
+        min_similarity: float = 0.0
     ) -> List[Dict[str, Any]]:
-        """
-        리랭킹을 포함한 검색 (더 많은 후보에서 선별)
+        """검색만 수행 (리랭킹 없이)"""
+        return self.search(
+            query=query,
+            top_k=top_k,
+            min_similarity=min_similarity,
+            use_reranker=False,
+            include_context=False
+        )
 
+    def get_model_stats(self) -> Dict[str, Any]:
+        """모델 통계 정보 반환"""
+        return {
+            'model_name': self.encoder.get_display_name(),
+            'model_type': self.model_type.value,
+            'embedding_dimension': self.encoder.get_dimension(),
+            'reranker_enabled': self.reranker is not None,
+            'temporal_filter_enabled': self.enable_temporal_filter
+        }
+
+    def _keyword_search(self, query: str, top_k: int) -> List[Any]:
+        """
+        키워드 Full-Text 검색
+        
         Args:
             query: 검색 쿼리
-            top_k: 최종 반환할 결과 수
-            min_similarity: 최소 유사도 임계값
-            rerank_top_k: 리랭킹할 후보 수
-
+            top_k: 반환할 결과 수
+            
         Returns:
-            리랭킹된 검색 결과
+            검색 결과 리스트
         """
-        # 더 많은 후보 검색
-        candidates = self.search(
-            query=query,
-            top_k=rerank_top_k,
-            min_similarity=min_similarity,
-            include_metadata=True
-        )
-        
-        if len(candidates) <= top_k:
-            return candidates
-        
-        # 간단한 리랭킹 (유사도 + 콘텐츠 길이 가중치)
-        reranked = self._simple_rerank(query, candidates)
-        
-        return reranked[:top_k]
-
-    def _simple_rerank(self, query: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        간단한 리랭킹 로직
-
-        Args:
-            query: 원본 쿼리
-            candidates: 후보 결과들
-
-        Returns:
-            리랭킹된 결과
-        """
-        query_words = set(query.lower().split())
-        
-        for candidate in candidates:
-            content = candidate['content'].lower()
-            content_words = set(content.split())
+        try:
+            # PostgreSQL Full-Text Search 사용
+            conn = psycopg2.connect(**self.db_config)
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # 단어 겹침 점수 계산
-            word_overlap = len(query_words.intersection(content_words))
-            word_overlap_score = word_overlap / len(query_words) if query_words else 0
+            sql_query = """
+            SELECT
+                d.report_id,
+                d.date,
+                d.title,
+                d.url,
+                e.chunk_id,
+                e.chunk_text as content,
+                ts_rank_cd(
+                    to_tsvector('simple', e.chunk_text),
+                    plainto_tsquery('simple', %s)
+                ) AS similarity
+            FROM embeddings_multilingual_e5_small e
+            JOIN financial_documents d ON e.report_id = d.report_id
+            WHERE to_tsvector('simple', e.chunk_text) @@ plainto_tsquery('simple', %s)
+            ORDER BY similarity DESC
+            LIMIT %s
+            """
             
-            # 콘텐츠 길이 가중치 (너무 짧거나 긴 것에 불이익)
-            content_length = len(candidate['content'])
-            length_score = 1.0
-            if content_length < 50:
-                length_score = 0.8  # 너무 짧음
-            elif content_length > 1000:
-                length_score = 0.9  # 너무 김
+            cursor.execute(sql_query, (query, query, top_k))
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
             
-            # 최종 점수 = 유사도 * 0.7 + 단어겹침 * 0.2 + 길이점수 * 0.1
-            final_score = (
-                candidate['similarity'] * 0.7 +
-                word_overlap_score * 0.2 +
-                length_score * 0.1
-            )
+            # PgVectorStore 결과 형식으로 변환
+            from ..vectorstore.pgvector_store import SearchResult
+            results = []
+            for row in rows:
+                results.append(SearchResult(
+                    chunk_id=row['chunk_id'],
+                    content=row['content'],
+                    similarity=float(row['similarity']),
+                    report_id=row['report_id'],
+                    date=row['date'],
+                    title=row['title'],
+                    url=row['url'],
+                    metadata={'source': 'keyword'}
+                ))
             
-            candidate['rerank_score'] = final_score
-        
-        # 리랭킹 점수로 정렬
-        return sorted(candidates, key=lambda x: x['rerank_score'], reverse=True)
-
-    def _log_search(
+            logger.info(f"Keyword search found {len(results)} results")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Keyword search failed: {e}")
+            return []
+    
+    def _hybrid_search(
         self,
         query: str,
         query_embedding: List[float],
-        results: List[Dict[str, Any]],
-        search_time: float
-    ):
-        """검색 로그 저장"""
-        try:
-            self.vector_store.connect()
-            
-            # 모델 ID 조회
-            self.vector_store.cursor.execute(
-                "SELECT id FROM vector_db.embedding_models WHERE model_name = %s",
-                (self.encoder.get_model_name(),)
-            )
-            model_id = self.vector_store.cursor.fetchone()[0]
-            
-            # 평균 유사도 계산 (NaN 값 필터링)
-            import math
-            valid_similarities = [
-                r['similarity'] for r in results 
-                if not (math.isnan(r['similarity']) or math.isinf(r['similarity']))
-            ]
-            avg_similarity = sum(valid_similarities) / len(valid_similarities) if valid_similarities else 0.0
-            
-            # 검색 결과 JSON 생성 (NaN 값 필터링)
-            results_json = {
-                'chunk_ids': [r['chunk_id'] for r in results],
-                'similarities': [
-                    r['similarity'] if not (math.isnan(r['similarity']) or math.isinf(r['similarity'])) 
-                    else 0.0 for r in results
-                ]
-            }
-            
-            # 로그 저장
-            self.vector_store.cursor.execute("""
-                INSERT INTO vector_db.search_logs 
-                (model_id, query, query_embedding, top_k, search_time_ms, results, avg_similarity)
-                VALUES (%s, %s, %s::vector, %s, %s, %s, %s)
-            """, (
-                model_id,
-                query,
-                '[' + ','.join(map(str, query_embedding)) + ']',
-                len(results),
-                search_time,
-                psycopg2.extras.Json(results_json),
-                avg_similarity
-            ))
-            
-            self.vector_store.conn.commit()
-            
-        except Exception as e:
-            logger.warning(f"Failed to log search: {e}")
-            if self.vector_store.conn:
-                self.vector_store.conn.rollback()
-
-    def get_model_stats(self) -> Dict[str, Any]:
-        """현재 모델의 통계 정보 반환"""
-        try:
-            self.vector_store.connect()
-            
-            # 모델 정보
-            self.vector_store.cursor.execute("""
-                SELECT display_name, dimension, COUNT(ce.id) as embedding_count
-                FROM vector_db.embedding_models em
-                LEFT JOIN vector_db.chunk_embeddings ce ON em.id = ce.model_id
-                WHERE em.model_name = %s
-                GROUP BY em.id, em.display_name, em.dimension
-            """, (self.encoder.get_model_name(),))
-            
-            model_info = self.vector_store.cursor.fetchone()
-            
-            # 최근 검색 통계
-            self.vector_store.cursor.execute("""
-                SELECT 
-                    AVG(search_time_ms) as avg_search_time,
-                    AVG(avg_similarity) as avg_similarity,
-                    COUNT(*) as total_searches
-                FROM vector_db.search_logs sl
-                JOIN vector_db.embedding_models em ON sl.model_id = em.id
-                WHERE em.model_name = %s
-                AND sl.created_at >= NOW() - INTERVAL '7 days'
-            """, (self.encoder.get_model_name(),))
-            
-            search_stats = self.vector_store.cursor.fetchone()
-            
-            return {
-                'model_name': model_info[0] if model_info else 'Unknown',
-                'dimension': model_info[1] if model_info else 0,
-                'embedding_count': model_info[2] if model_info else 0,
-                'avg_search_time_ms': float(search_stats[0]) if search_stats[0] else 0.0,
-                'avg_similarity': float(search_stats[1]) if search_stats[1] else 0.0,
-                'total_searches_7d': search_stats[2] if search_stats[2] else 0
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get model stats: {e}")
-            return {}
-
-    def close(self):
-        """리소스 정리"""
-        if hasattr(self, 'vector_store'):
-            self.vector_store.close()
-
-
-class MultiModelRetriever:
-    """다중 모델 리트리버 (모델 비교용)"""
-
-    def __init__(
-        self,
-        model_types: List[EmbeddingModelType],
-        db_config: Optional[Dict[str, str]] = None,
-        device: Optional[str] = None
-    ):
+        top_k: int,
+        min_similarity: float
+    ) -> List[Any]:
         """
-        Args:
-            model_types: 사용할 모델 타입 리스트
-            db_config: 데이터베이스 연결 설정
-            device: 디바이스
-        """
-        self.retrievers = {}
+        하이브리드 검색 (벡터 + 키워드 RRF)
         
-        for model_type in model_types:
-            try:
-                self.retrievers[model_type] = VectorRetriever(
-                    model_type=model_type,
-                    db_config=db_config,
-                    device=device
-                )
-                logger.info(f"Loaded retriever: {model_type.value}")
-            except Exception as e:
-                logger.error(f"Failed to load {model_type.value}: {e}")
-
-    def search_all_models(
-        self,
-        query: str,
-        top_k: int = 5,
-        min_similarity: float = 0.0
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        모든 모델로 동시 검색
-
         Args:
             query: 검색 쿼리
+            query_embedding: 쿼리 임베딩
             top_k: 반환할 결과 수
-            min_similarity: 최소 유사도 임계값
-
+            min_similarity: 최소 유사도
+            
         Returns:
-            모델별 검색 결과
+            검색 결과 리스트
         """
-        results = {}
+        try:
+            # 1. 벡터 검색
+            vector_results = self.vector_store.search_similar(
+                query_embedding=query_embedding,
+                model_type=self.model_type,
+                top_k=top_k * 2,  # 더 많이 가져와서 융합
+                min_similarity=min_similarity
+            )
+            
+            # 2. 키워드 검색
+            keyword_results = self._keyword_search(query, top_k * 2)
+            
+            # 3. Reciprocal Rank Fusion (RRF)
+            fused_results = self._reciprocal_rank_fusion(
+                vector_results, keyword_results, k=60
+            )
+            
+            logger.info(f"Hybrid search found {len(fused_results)} results")
+            return fused_results[:top_k]
+            
+        except Exception as e:
+            logger.error(f"Hybrid search failed: {e}")
+            # Fallback to vector search
+            return self.vector_store.search_similar(
+                query_embedding=query_embedding,
+                model_type=self.model_type,
+                top_k=top_k,
+                min_similarity=min_similarity
+            )
+    
+    def _reciprocal_rank_fusion(
+        self,
+        vector_results: List[Any],
+        keyword_results: List[Any],
+        k: int = 60
+    ) -> List[Any]:
+        """
+        Reciprocal Rank Fusion (RRF)
         
-        for model_type, retriever in self.retrievers.items():
-            try:
-                model_results = retriever.search(
-                    query=query,
-                    top_k=top_k,
-                    min_similarity=min_similarity
-                )
-                results[model_type.value] = model_results
-                
-            except Exception as e:
-                logger.error(f"Search failed for {model_type.value}: {e}")
-                results[model_type.value] = []
+        Args:
+            vector_results: 벡터 검색 결과
+            keyword_results: 키워드 검색 결과
+            k: RRF 파라미터
+            
+        Returns:
+            융합된 결과 리스트
+        """
+        scores = {}
+        chunk_map = {}
+        
+        # Vector 검색 결과 점수 계산
+        for rank, result in enumerate(vector_results):
+            chunk_id = result.chunk_id
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (k + rank + 1)
+            chunk_map[chunk_id] = result
+        
+        # Keyword 검색 결과 점수 계산
+        for rank, result in enumerate(keyword_results):
+            chunk_id = result.chunk_id
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (k + rank + 1)
+            if chunk_id not in chunk_map:
+                chunk_map[chunk_id] = result
+        
+        # 점수로 정렬
+        sorted_chunks = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # 결과 생성
+        from ..vectorstore.pgvector_store import SearchResult
+        results = []
+        for chunk_id, fusion_score in sorted_chunks:
+            original = chunk_map[chunk_id]
+            # 융합 점수를 similarity로 설정
+            result = SearchResult(
+                chunk_id=original.chunk_id,
+                content=original.content,
+                similarity=fusion_score,
+                report_id=original.report_id,
+                date=original.date,
+                title=original.title,
+                url=original.url,
+                metadata={'source': 'hybrid', 'original_similarity': original.similarity}
+            )
+            results.append(result)
         
         return results
-
-    def compare_models(
-        self,
-        query: str,
-        top_k: int = 5,
-        min_similarity: float = 0.0
-    ) -> Dict[str, Any]:
-        """
-        모델 성능 비교
-
-        Args:
-            query: 검색 쿼리
-            top_k: 반환할 결과 수
-            min_similarity: 최소 유사도 임계값
-
-        Returns:
-            비교 결과
-        """
-        all_results = self.search_all_models(query, top_k, min_similarity)
-        
-        comparison = {
-            'query': query,
-            'timestamp': time.time(),
-            'models': {}
-        }
-        
-        for model_name, results in all_results.items():
-            if results:
-                avg_similarity = sum(r['similarity'] for r in results) / len(results)
-                search_time = results[0]['search_time_ms'] if results else 0.0
-                
-                comparison['models'][model_name] = {
-                    'result_count': len(results),
-                    'avg_similarity': avg_similarity,
-                    'search_time_ms': search_time,
-                    'top_result_similarity': results[0]['similarity'] if results else 0.0
-                }
-            else:
-                comparison['models'][model_name] = {
-                    'result_count': 0,
-                    'avg_similarity': 0.0,
-                    'search_time_ms': 0.0,
-                    'top_result_similarity': 0.0
-                }
-        
-        return comparison
 
     def _enrich_with_context(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -471,6 +411,513 @@ class MultiModelRetriever:
         return enriched_results
     
     def close(self):
+        """리트리버 정리"""
+        if hasattr(self.vector_store, 'close'):
+            self.vector_store.close()
+
+
+# ============================================================================
+# 하이브리드 Retriever 클래스 (벡터 + 키워드 검색)
+# ============================================================================
+
+class SearchMethod(Enum):
+    """검색 방법"""
+    VECTOR_ONLY = "vector_only"
+    KEYWORD_ONLY = "keyword_only"
+    HYBRID = "hybrid"
+
+
+class RankFusionMethod(Enum):
+    """랭크 퓨전 방법"""
+    RECIPROCAL_RANK_FUSION = "rrf"  # Reciprocal Rank Fusion
+    WEIGHTED_SUM = "weighted_sum"    # 가중 합산
+    MAX_SCORE = "max_score"          # 최대 점수
+
+
+@dataclass
+class SearchConfig:
+    """검색 설정"""
+    search_method: SearchMethod = SearchMethod.HYBRID
+    fusion_method: RankFusionMethod = RankFusionMethod.RECIPROCAL_RANK_FUSION
+    vector_weight: float = 0.7
+    keyword_weight: float = 0.3
+    rrf_k: int = 60  # RRF 파라미터
+    min_score: float = 0.0
+
+
+class HybridRetriever:
+    """하이브리드 검색기"""
+
+    def __init__(
+        self,
+        db_config: Dict[str, str],
+        table_name: str = "financial_documents",
+        embedding_table: str = "embeddings_multilingual_e5_small"
+    ):
+        """
+        Args:
+            db_config: PostgreSQL 연결 설정
+            table_name: 문서 테이블명
+            embedding_table: 임베딩 테이블명
+        """
+        self.db_config = db_config
+        self.table_name = table_name
+        self.embedding_table = embedding_table
+        self.pool: Optional[asyncpg.Pool] = None
+
+    async def initialize(self):
+        """데이터베이스 연결 풀 초기화"""
+        if self.pool is None:
+            self.pool = await asyncpg.create_pool(**self.db_config)
+            logger.info("Database connection pool created")
+
+    async def close(self):
+        """연결 풀 종료"""
+        if self.pool:
+            await self.pool.close()
+            logger.info("Database connection pool closed")
+
+    async def vector_search(
+        self,
+        query_embedding: List[float],
+        top_k: int = 10,
+        min_similarity: float = 0.0
+    ) -> List[Dict[str, Any]]:
+        """
+        벡터 유사도 검색 (pgvector)
+
+        Args:
+            query_embedding: 쿼리 임베딩 벡터
+            top_k: 반환할 최대 개수
+            min_similarity: 최소 유사도
+
+        Returns:
+            검색 결과 리스트
+        """
+        if not self.pool:
+            await self.initialize()
+
+        query = f"""
+        SELECT
+            d.report_id,
+            d.date,
+            d.title,
+            d.url,
+            e.chunk_id,
+            e.chunk_text,
+            1 - (e.embedding <=> $1::vector) AS similarity
+        FROM {self.embedding_table} e
+        JOIN {self.table_name} d ON e.report_id = d.report_id
+        WHERE 1 - (e.embedding <=> $1::vector) >= $2
+        ORDER BY e.embedding <=> $1::vector
+        LIMIT $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(
+                    query,
+                    query_embedding,
+                    min_similarity,
+                    top_k
+                )
+
+                results = []
+                for row in rows:
+                    results.append({
+                        'report_id': row['report_id'],
+                        'date': row['date'],
+                        'title': row['title'],
+                        'url': row['url'],
+                        'chunk_id': row['chunk_id'],
+                        'chunk_text': row['chunk_text'],
+                        'similarity': float(row['similarity']),
+                        'source': 'vector'
+                    })
+
+                logger.info(f"Vector search found {len(results)} results")
+                return results
+
+        except Exception as e:
+            logger.error(f"Vector search failed: {e}")
+            return []
+
+    async def keyword_search(
+        self,
+        query: str,
+        top_k: int = 10,
+        language: str = 'korean'
+    ) -> List[Dict[str, Any]]:
+        """
+        키워드 Full-Text Search (PostgreSQL tsvector)
+
+        Args:
+            query: 검색 쿼리
+            top_k: 반환할 최대 개수
+            language: 검색 언어 ('korean', 'english')
+
+        Returns:
+            검색 결과 리스트
+        """
+        if not self.pool:
+            await self.initialize()
+
+        # PostgreSQL Full-Text Search 쿼리
+        sql_query = f"""
+        SELECT
+            d.report_id,
+            d.date,
+            d.title,
+            d.url,
+            e.chunk_id,
+            e.chunk_text,
+            ts_rank_cd(
+                to_tsvector($1, e.chunk_text),
+                plainto_tsquery($1, $2)
+            ) AS rank_score
+        FROM {self.embedding_table} e
+        JOIN {self.table_name} d ON e.report_id = d.report_id
+        WHERE to_tsvector($1, e.chunk_text) @@ plainto_tsquery($1, $2)
+        ORDER BY rank_score DESC
+        LIMIT $3
+        """
+
+        # 언어 설정 매핑
+        lang_config = {
+            'korean': 'simple',  # PostgreSQL에 한국어 FTS가 없으면 simple 사용
+            'english': 'english'
+        }
+        pg_language = lang_config.get(language, 'simple')
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(
+                    sql_query,
+                    pg_language,
+                    query,
+                    top_k
+                )
+
+                results = []
+                for row in rows:
+                    results.append({
+                        'report_id': row['report_id'],
+                        'date': row['date'],
+                        'title': row['title'],
+                        'url': row['url'],
+                        'chunk_id': row['chunk_id'],
+                        'chunk_text': row['chunk_text'],
+                        'similarity': float(row['rank_score']),
+                        'source': 'keyword'
+                    })
+
+                logger.info(f"Keyword search found {len(results)} results")
+                return results
+
+        except Exception as e:
+            logger.error(f"Keyword search failed: {e}")
+            return []
+
+    def reciprocal_rank_fusion(
+        self,
+        vector_results: List[Dict[str, Any]],
+        keyword_results: List[Dict[str, Any]],
+        k: int = 60
+    ) -> List[Dict[str, Any]]:
+        """
+        Reciprocal Rank Fusion (RRF)
+
+        RRF Score = sum(1 / (k + rank))
+
+        Args:
+            vector_results: 벡터 검색 결과
+            keyword_results: 키워드 검색 결과
+            k: RRF 파라미터 (일반적으로 60)
+
+        Returns:
+            퓨전된 결과 리스트
+        """
+        # chunk_id를 키로 사용하여 점수 계산
+        scores = {}
+        chunk_map = {}
+
+        # Vector 검색 결과 점수 계산
+        for rank, result in enumerate(vector_results):
+            chunk_id = result['chunk_id']
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (k + rank + 1)
+            chunk_map[chunk_id] = result
+
+        # Keyword 검색 결과 점수 계산
+        for rank, result in enumerate(keyword_results):
+            chunk_id = result['chunk_id']
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (k + rank + 1)
+            if chunk_id not in chunk_map:
+                chunk_map[chunk_id] = result
+
+        # 점수로 정렬
+        sorted_chunks = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+        results = []
+        for chunk_id, fusion_score in sorted_chunks:
+            result = chunk_map[chunk_id].copy()
+            result['fusion_score'] = fusion_score
+            result['source'] = 'hybrid_rrf'
+            results.append(result)
+
+        return results
+
+    def weighted_sum_fusion(
+        self,
+        vector_results: List[Dict[str, Any]],
+        keyword_results: List[Dict[str, Any]],
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3
+    ) -> List[Dict[str, Any]]:
+        """
+        가중 합산 퓨전
+
+        Args:
+            vector_results: 벡터 검색 결과
+            keyword_results: 키워드 검색 결과
+            vector_weight: 벡터 검색 가중치
+            keyword_weight: 키워드 검색 가중치
+
+        Returns:
+            퓨전된 결과 리스트
+        """
+        # chunk_id를 키로 사용하여 점수 계산
+        scores = {}
+        chunk_map = {}
+
+        # Vector 검색 결과 점수 계산
+        for result in vector_results:
+            chunk_id = result['chunk_id']
+            scores[chunk_id] = scores.get(chunk_id, 0) + result['similarity'] * vector_weight
+            chunk_map[chunk_id] = result
+
+        # Keyword 검색 결과 점수 계산
+        for result in keyword_results:
+            chunk_id = result['chunk_id']
+            scores[chunk_id] = scores.get(chunk_id, 0) + result['similarity'] * keyword_weight
+            if chunk_id not in chunk_map:
+                chunk_map[chunk_id] = result
+
+        # 점수로 정렬
+        sorted_chunks = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+        results = []
+        for chunk_id, fusion_score in sorted_chunks:
+            result = chunk_map[chunk_id].copy()
+            result['fusion_score'] = fusion_score
+            result['source'] = 'hybrid_weighted'
+            results.append(result)
+
+        return results
+
+    async def hybrid_search(
+        self,
+        query: str,
+        query_embedding: List[float],
+        config: Optional[SearchConfig] = None,
+        top_k: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        하이브리드 검색 수행
+
+        Args:
+            query: 검색 쿼리 텍스트
+            query_embedding: 쿼리 임베딩 벡터
+            config: 검색 설정
+            top_k: 반환할 최대 개수
+
+        Returns:
+            검색 결과 리스트
+        """
+        if config is None:
+            config = SearchConfig()
+
+        # 검색 방법에 따라 수행
+        if config.search_method == SearchMethod.VECTOR_ONLY:
+            return await self.vector_search(query_embedding, top_k=top_k)
+
+        elif config.search_method == SearchMethod.KEYWORD_ONLY:
+            return await self.keyword_search(query, top_k=top_k)
+
+        else:  # HYBRID
+            # 두 검색 동시 수행
+            vector_results = await self.vector_search(query_embedding, top_k=top_k)
+            keyword_results = await self.keyword_search(query, top_k=top_k)
+
+            # 퓨전 방법에 따라 결합
+            if config.fusion_method == RankFusionMethod.RECIPROCAL_RANK_FUSION:
+                return self.reciprocal_rank_fusion(
+                    vector_results, keyword_results, config.rrf_k
+                )[:top_k]
+
+            elif config.fusion_method == RankFusionMethod.WEIGHTED_SUM:
+                return self.weighted_sum_fusion(
+                    vector_results, keyword_results,
+                    config.vector_weight, config.keyword_weight
+                )[:top_k]
+
+            else:  # MAX_SCORE
+                return self._max_score_fusion(vector_results, keyword_results)[:top_k]
+
+    def _max_score_fusion(
+        self,
+        vector_results: List[Dict[str, Any]],
+        keyword_results: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """최대 점수 퓨전"""
+        # chunk_id를 키로 사용하여 최대 점수 계산
+        scores = {}
+        chunk_map = {}
+
+        # Vector 검색 결과 점수 계산
+        for result in vector_results:
+            chunk_id = result['chunk_id']
+            scores[chunk_id] = max(scores.get(chunk_id, 0), result['similarity'])
+            chunk_map[chunk_id] = result
+
+        # Keyword 검색 결과 점수 계산
+        for result in keyword_results:
+            chunk_id = result['chunk_id']
+            scores[chunk_id] = max(scores.get(chunk_id, 0), result['similarity'])
+            if chunk_id not in chunk_map:
+                chunk_map[chunk_id] = result
+
+        # 점수로 정렬
+        sorted_chunks = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+        results = []
+        for chunk_id, fusion_score in sorted_chunks:
+            result = chunk_map[chunk_id].copy()
+            result['fusion_score'] = fusion_score
+            result['source'] = 'hybrid_max'
+            results.append(result)
+
+        return results
+
+
+# ============================================================================
+# 다중 모델 Retriever (비교 분석용)
+# ============================================================================
+
+class MultiModelRetriever:
+    """다중 모델 리트리버 (모델 성능 비교용)"""
+
+    def __init__(self, db_config: Optional[Dict[str, str]] = None):
+        """
+        Args:
+            db_config: 데이터베이스 연결 설정
+        """
+        self.db_config = db_config
+        self.retrievers = {}
+        
+        # 지원하는 모델들
+        self.supported_models = [
+            EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+            EmbeddingModelType.MULTILINGUAL_E5_BASE,
+            EmbeddingModelType.KOREAN_BERT_BASE
+        ]
+        
+        logger.info(f"MultiModelRetriever initialized with {len(self.supported_models)} models")
+
+    def _get_retriever(self, model_type: EmbeddingModelType) -> Retriever:
+        """모델별 리트리버 가져오기 (lazy loading)"""
+        if model_type not in self.retrievers:
+            self.retrievers[model_type] = Retriever(
+                model_type=model_type,
+                db_config=self.db_config,
+                enable_temporal_filter=True
+            )
+        return self.retrievers[model_type]
+
+    def search_all_models(
+        self,
+        query: str,
+        top_k: int = 5,
+        min_similarity: float = 0.0
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        모든 모델로 검색 수행
+
+        Args:
+            query: 검색 쿼리
+            top_k: 반환할 결과 수
+            min_similarity: 최소 유사도 임계값
+
+        Returns:
+            모델별 검색 결과 딕셔너리
+        """
+        results = {}
+        
+        for model_type in self.supported_models:
+            try:
+                retriever = self._get_retriever(model_type)
+                model_results = retriever.search(
+                    query=query,
+                    top_k=top_k,
+                    min_similarity=min_similarity,
+                    use_reranker=False  # 비교를 위해 리랭킹 비활성화
+                )
+                results[model_type.value] = model_results
+                logger.info(f"Search completed for {model_type.value}: {len(model_results)} results")
+                
+            except Exception as e:
+                logger.error(f"Search failed for {model_type.value}: {e}")
+                results[model_type.value] = []
+
+        return results
+
+    def compare_models(
+        self,
+        query: str,
+        top_k: int = 5,
+        min_similarity: float = 0.0
+    ) -> Dict[str, Any]:
+        """
+        모델 성능 비교
+
+        Args:
+            query: 검색 쿼리
+            top_k: 반환할 결과 수
+            min_similarity: 최소 유사도 임계값
+
+        Returns:
+            비교 결과 딕셔너리
+        """
+        all_results = self.search_all_models(query, top_k, min_similarity)
+        
+        comparison = {
+            'query': query,
+            'top_k': top_k,
+            'min_similarity': min_similarity,
+            'models': {}
+        }
+        
+        for model_name, results in all_results.items():
+            if results:
+                avg_similarity = sum(r['similarity'] for r in results) / len(results)
+                search_time = results[0]['search_time_ms'] if results else 0.0
+                
+                comparison['models'][model_name] = {
+                    'result_count': len(results),
+                    'avg_similarity': avg_similarity,
+                    'search_time_ms': search_time,
+                    'top_result_similarity': results[0]['similarity'] if results else 0.0
+                }
+            else:
+                comparison['models'][model_name] = {
+                    'result_count': 0,
+                    'avg_similarity': 0.0,
+                    'search_time_ms': 0.0,
+                    'top_result_similarity': 0.0
+                }
+        
+        return comparison
+
+    def close(self):
         """모든 리트리버 정리"""
         for retriever in self.retrievers.values():
             retriever.close()
@@ -481,10 +928,10 @@ if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO)
     
-    print("=== Vector Retriever Test ===\n")
+    print("=== Retriever Test ===\n")
     
-    # 단일 모델 테스트
-    retriever = VectorRetriever(EmbeddingModelType.MULTILINGUAL_E5_SMALL)
+    # 기본 Retriever 테스트
+    retriever = Retriever(EmbeddingModelType.MULTILINGUAL_E5_SMALL)
     
     query = "신혼부부 임차보증금 이자지원"
     results = retriever.search(query, top_k=3)
@@ -503,3 +950,8 @@ if __name__ == "__main__":
         print(f"  {key}: {value}")
     
     retriever.close()
+    
+    print("\n=== Hybrid Retriever Test ===")
+    print("HybridRetriever는 비동기 함수이므로 별도 테스트 필요")
+    
+    print("\nRetriever module loaded successfully")

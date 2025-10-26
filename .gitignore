@@ -243,6 +243,7 @@ data/*
 models/adapters/*
 models/base/*
 **/.cache/
+service/rag/results/*
 
 service/fine_tuning/llama_factory/dataset/*
 !service/fine_tuning/llama_factory/dataset/.gitkeep
