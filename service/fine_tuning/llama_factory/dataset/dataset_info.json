@@ -1,11 +1,20 @@
-{
-  "ko_civil_service_inst": {
-    "file_name": "ko_civil_service.inst.json",
+"ko_report_summary_train": {
+	"file_name": "train.slice.json",
+	"formatting": "alpaca",
+	"columns": {
+	  "prompt": "instruction",
+	  "query": "input",
+	  "response": "output"
+	},
+	"task": "sft"
+},
+"ko_report_summary_eval": {
+    "file_name": "test.slice.json",
     "formatting": "alpaca",
     "columns": {
       "prompt": "instruction",
-      "response": "output",
-      "history": "input"
-    }
-  }
-}
+      "query": "input",
+      "response": "output"
+    },
+    "task": "sft"
+},

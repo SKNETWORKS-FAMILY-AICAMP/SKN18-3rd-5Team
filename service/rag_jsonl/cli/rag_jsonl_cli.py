@@ -34,7 +34,7 @@ class RAGJSONLSystem:
     def __init__(
         self,
         db_config: Dict[str, str],
-        embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        embedding_model: str = "intfloat/multilingual-e5-small"
     ):
         """
         Args:
@@ -81,8 +81,18 @@ class RAGJSONLSystem:
         # 쿼리 임베딩 생성
         query_embedding = self.encoder.encode([query])[0]
         
-        # 모델명으로 테이블명 생성
-        model_name = self.embedding_model.replace("/", "_").replace("-", "_")
+        # 모델명으로 테이블명 생성 (실제 테이블명에 맞게)
+        if "multilingual-e5-small" in self.embedding_model:
+            model_name = "multilingual_e5_small"
+        elif "kakaobank" in self.embedding_model:
+            model_name = "kakaobank"
+        elif "fine5" in self.embedding_model:
+            model_name = "fine5"
+        else:
+            model_name = self.embedding_model.replace("/", "_").replace("-", "_")
+        
+        # 벡터를 문자열로 변환
+        embedding_str = '[' + ','.join(map(str, query_embedding.tolist())) + ']'
         
         # 검색 쿼리 구성
         base_query = f"""
@@ -93,13 +103,13 @@ class RAGJSONLSystem:
                 c.natural_text,
                 c.metadata,
                 c.token_count,
-                1 - (e.embedding <=> %s) as similarity
+                1 - (e.embedding <=> %s::vector) as similarity
             FROM chunks c
             JOIN embeddings_{model_name} e ON c.chunk_id = e.chunk_id
         """
         
-        where_conditions = ["1 - (e.embedding <=> %s) >= %s"]
-        params = [query_embedding.tolist(), query_embedding.tolist(), min_similarity]
+        where_conditions = ["1 - (e.embedding <=> %s::vector) >= %s"]
+        params = [embedding_str, embedding_str, min_similarity]
         
         if corp_filter:
             where_conditions.append("c.metadata->>'corp_name' = %s")
@@ -108,10 +118,11 @@ class RAGJSONLSystem:
         query_sql = f"""
             {base_query}
             WHERE {' AND '.join(where_conditions)}
-            ORDER BY e.embedding <=> %s
+            ORDER BY e.embedding <=> %s::vector
             LIMIT %s
         """
-        params.extend([query_embedding.tolist(), top_k])
+        params.extend([embedding_str, top_k])
+        
         
         # 검색 실행
         cursor = self.conn.cursor(cursor_factory=RealDictCursor)
@@ -145,8 +156,15 @@ class RAGJSONLSystem:
         cursor.execute("SELECT COUNT(*) FROM chunks;")
         chunk_count = cursor.fetchone()[0]
         
-        # 모델별 임베딩 수 조회
-        model_name = self.embedding_model.replace("/", "_").replace("-", "_")
+        # 모델별 임베딩 수 조회 (실제 테이블명에 맞게)
+        if "multilingual-e5-small" in self.embedding_model:
+            model_name = "multilingual_e5_small"
+        elif "kakaobank" in self.embedding_model:
+            model_name = "kakaobank"
+        elif "fine5" in self.embedding_model:
+            model_name = "fine5"
+        else:
+            model_name = self.embedding_model.replace("/", "_").replace("-", "_")
         cursor.execute(f"SELECT COUNT(*) FROM embeddings_{model_name};")
         embedding_count = cursor.fetchone()[0]
         
@@ -176,7 +194,7 @@ def get_db_config() -> Dict[str, str]:
     return {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
         'port': os.getenv('POSTGRES_PORT', '5432'),
-        'database': os.getenv('POSTGRES_DB', 'rag_db'),
+        'database': os.getenv('POSTGRES_DB', 'skn_project'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD', 'post1234')
     }
@@ -299,12 +317,12 @@ def main():
     search_parser.add_argument('--top-k', type=int, default=5, help='반환할 결과 수')
     search_parser.add_argument('--min-similarity', type=float, default=0.0, help='최소 유사도')
     search_parser.add_argument('--corp-filter', help='기업명 필터')
-    search_parser.add_argument('--model', default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", help='임베딩 모델')
+    search_parser.add_argument('--model', default="intfloat/multilingual-e5-small", help='임베딩 모델')
     search_parser.add_argument('--save-results', action='store_true', help='검색 결과 저장')
     
     # 통계 명령어
     stats_parser = subparsers.add_parser('stats', help='시스템 통계 조회')
-    stats_parser.add_argument('--model', default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", help='임베딩 모델')
+    stats_parser.add_argument('--model', default="intfloat/multilingual-e5-small", help='임베딩 모델')
     
     args = parser.parse_args()
     
