@@ -111,6 +111,13 @@ def _load():
     if _tokenizer.pad_token_id is None and _tokenizer.eos_token_id is not None:
         _tokenizer.pad_token = _tokenizer.eos_token
 
+    if getattr(_model.config, "pad_token_id", None) is None:
+        _model.config.pad_token_id = _tokenizer.pad_token_id
+    if getattr(_model.config, "bos_token_id", None) is None and _tokenizer.bos_token_id is not None:
+        _model.config.bos_token_id = _tokenizer.bos_token_id
+    if getattr(_model.config, "eos_token_id", None) is None and _tokenizer.eos_token_id is not None:
+        _model.config.eos_token_id = _tokenizer.eos_token_id
+
     return _tokenizer, _model
 
 def _apply_chat_template_safe(tokenizer, messages) -> torch.Tensor:
@@ -143,9 +150,12 @@ def chat(system: str, user: str, max_tokens: int = 512) -> str:
         {"role": "user", "content": user.strip()},
     ]
     input_ids = _apply_chat_template_safe(tokenizer, messages).to(model.device)
+    attention_mask = (input_ids != tokenizer.pad_token_id).long()
+    attention_mask = attention_mask.to(model.device)
 
     gen_out = model.generate(
         input_ids=input_ids,
+        attention_mask=attention_mask,
         max_new_tokens=min(max_tokens, 128),  # ← 128로 캡
         do_sample=True,
         temperature=0.7,
