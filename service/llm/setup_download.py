@@ -29,10 +29,10 @@ def _resolve_model_dir(env_value: str, default_relative: str) -> str:
         return os.path.normpath(candidate)
     return os.path.normpath(os.path.join(BASE_DIR, candidate))
 
-HF_ADAPTER_REPO_ID = os.getenv("HF_ADAPTER_REPO_ID", "has0327/Llama-3.2-3B-ko-finetuned").strip()
+HF_ADAPTER_REPO_ID = os.getenv("HF_ADAPTER_REPO_ID", "has0327/llama3.2-3b-ko-report-lora").strip()
 MODEL_DIR_ADAPTER = _resolve_model_dir(
     os.getenv("MODEL_DIR_ADAPTER") or os.getenv("HF_REPO_ID", ""),
-    "models/adapters/Llama-3.2-3B-ko-finetuned",
+    "models/adapters/llama3.2-3b-ko-report-lora",
 )
 
 HF_BASE_REPO_ID = os.getenv("HF_BASE_REPO_ID", "meta-llama/Llama-3.2-3B").strip()
