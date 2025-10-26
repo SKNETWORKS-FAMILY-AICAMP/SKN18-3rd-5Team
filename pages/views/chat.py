@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 import streamlit as st
 from datetime import datetime
 from service.chat_service import ChatService
@@ -66,14 +67,33 @@ def change_chat_theme() -> None:
 
 
 
-# 예상 질문 목록
-SUGGESTED_QUESTIONS = [
-    "🏦 삼성전자의 2024년 3분기 매출액과 영업이익 알려줘",
-    "📈 SK하이닉스의 최근 자기주식 취득 결정 배경과 취득 규모 알려줘",
-    "💰 하이브의 아티스트별 매출 기여도와 해외 매출 비중 변화 추이 알려줘",
-    "📉 LG에너지솔루션의 주요 리스크 요인은 뭐야?",
-    "⚡ 현대자동차의 전기차 사업 투자 계획과 2025년 목표 판매량을 비교 분석해줘."
-]
+# 예상 질문 목록 (레벨별)
+SUGGESTED_QUESTIONS = {
+    "beginner": [
+        "🏦 삼성전자의 2024년 3분기 매출액과 영업이익 알려줘",
+        "🧠 올해 LG전자 이익이 줄었다는데 왜 그런 거예요?",
+        "💹 요즘 금융지주 중에 수익률이 제일 좋은 곳은 어디예요?",
+        "🔎 삼성전자가 반도체 불황이라는데 실제로 얼마나 심각해요?",
+    ],
+    "intermediate": [
+        "📈 SK하이닉스의 최근 자기주식 취득 결정 배경과 취득 규모 알려줘",
+        "📉 LG에너지솔루션의 주요 리스크 요인은 뭐야?",
+        "📊 삼성전자의 영업이익률이 전년 대비 개선된 이유가 뭐예요?",
+        "💼 LG화학의 부채비율은 업계 평균보다 높은 편인가요?",
+    ],
+    "advanced": [
+        "💰 하이브의 아티스트별 매출 기여도와 해외 매출 비중 변화 추이 알려줘",
+        "⚡ 현대자동차의 전기차 사업 투자 계획과 2025년 목표 판매량을 비교 분석해줘",
+        "📐 삼성전자의 2025년 2분기 EBITDA 마진은 업계 평균 대비 어느 수준입니까?",
+        "🔋 2024~2025년 배터리 섹터의 CAPEX 사이클이 마진에 어떤 영향을 주나요?",
+    ],
+}
+
+LEVEL_LABEL = {
+    "beginner": "초급",
+    "intermediate": "중급",
+    "advanced": "고급",
+}
 
 
 # 채팅 서비스 초기화
@@ -119,15 +139,23 @@ def render_chat_panel() -> None:
 
 def _render_suggested_questions() -> None:
     """예상 질문 버튼들을 렌더링"""
-    st.markdown("### 💡 자주 묻는 질문들")
+    level_raw = st.session_state.get("user_level") or "beginner"
+    level = str(level_raw).lower()
+    if level not in SUGGESTED_QUESTIONS:
+        level = "beginner"
+
+    display_level = LEVEL_LABEL.get(level, LEVEL_LABEL["beginner"])
+
+    st.markdown(f"### 💡 추천 질문 ({display_level})")
     st.markdown("궁금한 내용을 클릭해보세요!")
     
     # 2열로 버튼 배치
     cols = st.columns(2)
-    for i, question in enumerate(SUGGESTED_QUESTIONS):
+    questions = SUGGESTED_QUESTIONS[level]
+    for i, question in enumerate(questions):
         col = cols[i % 2]
         with col:
-            if st.button(question, key=f"suggested_{i}"):
+            if st.button(question, key=f"suggested_{i}", use_container_width=True):
                 _handle_user_input(question)
     
     st.divider()
@@ -303,8 +331,20 @@ def _get_langgraph_app():
     return st.session_state.langgraph_app
 
 
+_CODE_FENCE_PATTERN = re.compile(r"```.*?```", re.DOTALL)
+
+
+def _strip_code_fences(text: str) -> str:
+    if not text:
+        return text
+    cleaned = _CODE_FENCE_PATTERN.sub("", text)
+    cleaned = cleaned.replace("```", "")
+    return cleaned.strip()
+
+
 def _format_langgraph_response(state: dict) -> str:
-    answer = state.get("draft_answer", "").strip()
+    answer = state.get("draft_answer", "")
+    answer = _strip_code_fences(answer).strip()
     if not answer:
         answer = "죄송합니다. 이번 질문에 대한 답변을 생성하지 못했습니다."
     citations = state.get("citations", [])
