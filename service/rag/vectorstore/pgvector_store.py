@@ -127,15 +127,20 @@ class PgVectorStore(VectorStoreInterface):
             # SearchResult 객체로 변환
             search_results = []
             for row in results:
+                metadata = row.get('metadata') or {}
                 result = SearchResult(
                     chunk_id=row['chunk_id'],
                     chunk_db_id=row['chunk_db_id'],
                     content=row['content'],
                     similarity=float(row['similarity']),
-                    metadata=row['metadata'],
+                    metadata=metadata,
                     corp_name=row['corp_name'],
                     document_name=row['document_name'],
-                    doc_type=row['doc_type']
+                    doc_type=row['doc_type'],
+                    report_id=metadata.get('report_id'),
+                    date=metadata.get('date'),
+                    title=metadata.get('title'),
+                    url=metadata.get('url'),
                 )
                 search_results.append(result)
 
