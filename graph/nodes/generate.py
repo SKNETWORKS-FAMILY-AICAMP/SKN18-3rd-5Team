@@ -49,11 +49,13 @@ def _fallback_answer(question: str, context: str) -> str:
     """LLM이 비어 있는 답을 돌려줄 때 최소한의 안내 문구를 생성."""
     snippet = _sanitize_context(context)
     if snippet:
-        preview = snippet[:300].rstrip()
+        preview = snippet[:600].strip()
         return (
             "죄송합니다. 모델이 답변을 생성하지 못했습니다. "
-            "다음 참고 내용을 확인해 주세요:\n"
-            f"{preview}..."
+            "다음 참고 내용을 확인해 주세요:\n\n"
+            "```markdown\n"
+            f"{preview}\n"
+            "```"
         )
     return (
         "죄송합니다. 현재 질문에 대한 답변을 생성하지 못했습니다. "
