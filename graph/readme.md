@@ -7,6 +7,11 @@
 
 ## [랭그래프]
 
+  - 🔗 핵심 원칙
+    - LangGraph에서 각 노드는 “자신이 맡은 일만 정확하게 수행”하는 것이 핵심
+    - 단일 책임 원칙: 각 노드는 한 가지 일만
+    - 명확한 데이터 흐름: 불필요한 의존성 금지
+    - 에러 전파 관리: 실패는 투명하게 처리
   - 전체 연동 개념도
     ```text
     [ Streamlit UI ]
@@ -23,27 +28,34 @@
     [ 결과 + ref 반환 ]
     ```
   - 노드 워크플로우
-    ```dot
-    digraph LangGraphQA {
-      rankdir=LR;
-      node [shape=rect, style=filled, fillcolor="#f8fafc", color="#94a3b8", fontname="Pretendard"];
+    ```mermaid
+    flowchart TD
+    %% === Styles ===
+    classDef oval fill:#e2e8f0,stroke:#94a3b8,color:#000;
+    classDef node fill:#f8fafc,stroke:#94a3b8,color:#000;
 
-      START [shape=oval, label="START", fillcolor="#e2e8f0"];
-      END   [shape=oval, label="END", fillcolor="#e2e8f0"];
+    %% === Nodes ===
+    START([START])
+    Router["Router<br/>- set user_level<br/>- meta(top_k/rerank_n/max_ctx_tokens)"]
+    QueryRewrite["QueryRewrite<br/>- keyword/time/ticker enrich"]
+    Retrieve["Retrieve (pgvector)<br/>- top_k by level<br/>- optional date freshness"]
+    Rerank["Rerank (optional)<br/>- cross-encoder/bge reranker<br/>- pick n by level"]
+    ContextTrim["ContextTrim<br/>- dedup + token cut<br/>- collect citations"]
+    Generate["Generate (FT-LLM)<br/>- System: common + PROMPT_TEMPLATES[level]<br/>- User: question+context+structure<br/>- append [ref: report_id, date]"]
+    GroundingCheck["GroundingCheck<br/>- ref present?<br/>- numbers/dates consistent?<br/>- retry if insufficient"]
+    Guardrail["Guardrail<br/>- investment disclaimer<br/>- sensitive filter"]
+    Answer["Answer<br/>- normalize citations<br/>- return answer+meta"]
+    END([END])
 
-      Router [label="Router\n- set user_level\n- meta(top_k/rerank_n/max_ctx_tokens)"];
-      QueryRewrite [label="QueryRewrite\n- keyword/time/ticker enrich"];
-      Retrieve [label="Retrieve (pgvector)\n- top_k by level\n- optional date freshness"];
-      Rerank [label="Rerank (optional)\n- cross-encoder/bge reranker\n- pick n by level"];
-      ContextTrim [label="ContextTrim\n- dedup + token cut\n- collect citations"];
-      Generate [label="Generate (FT-LLM)\n- System: common + PROMPT_TEMPLATES[level]\n- User: question+context+structure\n- append [ref: report_id, date]"];
-      GroundingCheck [label="GroundingCheck\n- ref present?\n- numbers/dates consistent?\n- retry if insufficient"];
-      Guardrail [label="Guardrail\n- investment disclaimer\n- sensitive filter"];
-      Answer [label="Answer\n- normalize citations\n- return answer+meta"];
+    %% === Flow ===
+    START --> Router --> QueryRewrite --> Retrieve --> Rerank --> ContextTrim --> Generate --> GroundingCheck --> Guardrail --> Answer --> END
 
-      START -> Router -> QueryRewrite -> Retrieve -> Rerank -> ContextTrim -> Generate -> GroundingCheck -> Guardrail -> Answer -> END;
-      GroundingCheck -> Retrieve [style=dashed, label="retry (≤1x)"];
-    }
+    %% === Retry Path ===
+    GroundingCheck -. "retry (≤1x)" .-> Retrieve
+
+    %% === Class Assignments ===
+    class START,END oval
+    class Router,QueryRewrite,Retrieve,Rerank,ContextTrim,Generate,GroundingCheck,Guardrail,Answer node
     ```
 | 노드                      | 설명                                      |
 | ----------------------- | ------------------------------------------ |
@@ -77,7 +89,6 @@
     - User: 레벨별 답변 구조 요구(초/중/고)
 
 ## TODO (실연결 체크리스트)
-
 - pgvector 연결 시:
   - service/pgvector_client.py의 fetch_similar를 asyncpg 쿼리로 교체
   - requirements.txt에 이미 asyncpg, psycopg, pgvector 명시됨
@@ -90,7 +101,6 @@
   
 
 ## 참고
-
 - 코루틴 처리
   -  `import asyncio`
   -  LLM 호출처럼 I/O 지연이 큰 작업을 조금이라도 효율적으로 처리하려면 비동기 함수로 두는 편이 자연스럽다

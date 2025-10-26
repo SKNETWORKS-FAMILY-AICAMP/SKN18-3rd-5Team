@@ -1,5 +1,9 @@
+import logging
+
 from graph.state import QAState
 from graph.utils.level import defaults
+
+logger = logging.getLogger(__name__)
 
 def run(state: QAState) -> QAState:
     """
@@ -14,6 +18,12 @@ def run(state: QAState) -> QAState:
     lvl = (state.get("user_level") or "beginner").lower()
     if lvl not in ("beginner","intermediate","advanced"):
         lvl = "beginner"
+    logger.info("Router start (requested_level=%s)", state.get("user_level"))
     state["user_level"] = lvl
     state["meta"] = defaults(lvl)
+    logger.info(
+        "Router complete → level=%s, meta=%s",
+        lvl,
+        state.get("meta"),
+    )
     return state

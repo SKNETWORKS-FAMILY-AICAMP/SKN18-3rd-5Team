@@ -1,7 +1,11 @@
 from __future__ import annotations
+import json
 import streamlit as st
 from datetime import datetime
 from service.chat_service import ChatService
+from graph.app_graph import build_app
+from pages.views.user_level_summary import render_user_level_summary
+
 
 def change_chat_theme() -> None:
     st.markdown("""
@@ -42,7 +46,6 @@ def change_chat_theme() -> None:
         background: #FFFFFF !important;
         transition: border-color 0.2s ease !important;
     }
-    
     .stChatInput textarea:focus {
         border-color: #3B82F6 !important;
         box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
@@ -55,13 +58,12 @@ def change_chat_theme() -> None:
         border-radius: 8px !important;
         margin: 4px !important;
     }
-    
     .stChatInput button:hover {
         background: #2563EB !important;
     }
     </style>
     """, unsafe_allow_html=True)
-    
+
 
 
 # 예상 질문 목록
@@ -89,9 +91,6 @@ def render_chat_panel() -> None:
     
     # # 현재 대화창 제목 표시
     current_session = st.session_state.chat_sessions[st.session_state.current_session_id]
-    # st.markdown(f"### 💬 {current_session['title']}")
-    
-    # 예상 질문 버튼들 (채팅 히스토리가 초기 상태일 때만 표시)
     current_history = current_session['messages']
     if len(current_history) <= 1:
         _render_suggested_questions()
@@ -102,6 +101,15 @@ def render_chat_panel() -> None:
         role = message["role"]
         with chat_container:
             st.chat_message(name=role, avatar=_avatar_for(role)).write(message["content"])
+
+    if st.session_state.get("latest_langgraph_state"):
+        with st.expander("LangGraph 상태 (디버그)", expanded=False):
+            debug_state = _summarize_state(st.session_state["latest_langgraph_state"])
+            st.text_area(
+                "state",
+                json.dumps(debug_state, ensure_ascii=False, indent=2),
+                height=320,
+            )
 
     # 채팅 입력창
     user_input = st.chat_input("질문을 입력하세요.")
@@ -131,8 +139,8 @@ def _init_state() -> None:
         st.session_state.chat_sessions = {}
         st.session_state.current_session_id = None
         _load_saved_sessions()
-    
-    # 현재 세션이 없으면 새로 생성
+    if "user_level" not in st.session_state:
+        st.session_state.user_level = st.session_state.get("user_level") or "biginner"
     if not st.session_state.current_session_id or st.session_state.current_session_id not in st.session_state.chat_sessions:
         _create_new_session()
 
@@ -147,7 +155,6 @@ def _render_chat_sessions_sidebar() -> None:
         if st.session_state.chat_sessions:
             for session_id, session in st.session_state.chat_sessions.items():
                 col1, col2 = st.columns([3, 1])
-                
                 with col1:
                     if st.button(
                         f"{'🔊' if session_id == st.session_state.current_session_id else ' '} {session['title'][:20]}...",
@@ -156,7 +163,6 @@ def _render_chat_sessions_sidebar() -> None:
                     ):
                         st.session_state.current_session_id = session_id
                         st.rerun()
-                
                 with col2:
                     if st.button("🗑️", key=f"delete_{session_id}", help="대화 삭제"):
                         _delete_session(session_id)
@@ -166,7 +172,6 @@ def _render_chat_sessions_sidebar() -> None:
         if st.button("➕ 새 대화", width='stretch'):
             _create_new_session()
             st.rerun()
-        
         st.write("---")
         st.caption("© 2025 SKN18-3rd-5Team")
 
@@ -175,13 +180,10 @@ def _create_new_session() -> None:
     """새 대화 세션 생성"""
     session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     title = f"대화 {len(st.session_state.chat_sessions) + 1}"
-    
-    # SQLite에 세션 생성
     if chat_service.create_session(session_id, title):
-        # 초기 메시지 추가
         chat_service.add_message(
-            session_id, 
-            "assistant", 
+            session_id,
+            "assistant",
             "안녕하세요! 투자 관련 궁금한 점을 언제든 물어보세요. 위 버튼을 클릭하거나 직접 질문을 입력해주세요! 😊"
         )
         
@@ -217,19 +219,25 @@ def _delete_session(session_id: str) -> None:
 
 
 def _handle_user_input(user_input: str) -> None:
-    """사용자 입력 처리 (버튼 클릭 또는 직접 입력)"""
     _append_message("user", user_input)
-    # TODO: 백엔드 응답 연동
-    _append_message("assistant", "현재는 데모 상태입니다. LLM 응답을 연결해 주세요.")
-    
-    # 첫 번째 사용자 메시지로 대화 제목 업데이트
+    try:
+        app = _get_langgraph_app()
+        user_level = st.session_state.get("user_level", "intermediate")
+        lg_state = app.invoke({"question": user_input, "user_level": user_level})
+        assistant_reply = _format_langgraph_response(lg_state)
+        st.session_state["latest_langgraph_state"] = lg_state
+        print(f"[Chat] assistant_reply={assistant_reply[:200]!r}")
+        _append_message("assistant", assistant_reply)
+    except Exception as exc:
+        _append_message("assistant", "죄송합니다. 답변 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+        st.warning(f"LangGraph 실행 오류: {exc}")
+
     current_session = st.session_state.chat_sessions[st.session_state.current_session_id]
-    if len(current_session['messages']) == 3:  # 초기 메시지 + 사용자 질문 + 봇 응답
+    if len(current_session['messages']) == 3:
         new_title = user_input[:30] + ("..." if len(user_input) > 30 else "")
         current_session['title'] = new_title
         # SQLite에도 제목 업데이트
         chat_service.update_session_title(st.session_state.current_session_id, new_title)
-    
     st.rerun()
 
 
@@ -254,11 +262,9 @@ def _load_saved_sessions() -> None:
     """SQLite에서 저장된 세션들을 로드"""
     try:
         sessions = chat_service.get_all_sessions()
-        
         for session in sessions:
             session_id = session['id']
             messages = chat_service.get_session_messages(session_id)
-            
             st.session_state.chat_sessions[session_id] = {
                 "title": session['title'],
                 "created_at": session['created_at'],
@@ -270,3 +276,47 @@ def _load_saved_sessions() -> None:
 
 def _avatar_for(role: str) -> str:
     return "🧑‍💻" if role == "user" else "🤖"
+
+
+def _summarize_state(state: dict, str_limit: int = 200) -> dict:
+    def _summarize(value):
+        if isinstance(value, str):
+            text = value.strip()
+            return text if len(text) <= str_limit else text[:str_limit] + "…"
+        if isinstance(value, list):
+            items = [_summarize(item) for item in value[:3]]
+            if len(value) > 3:
+                items.append(f"… (+{len(value) - 3} more)")
+            return items
+        if isinstance(value, dict):
+            preview = list(value.items())[:6]
+            return {k: _summarize(v) for k, v in preview}
+        return value
+
+    return {k: _summarize(v) for k, v in state.items()}
+
+
+def _get_langgraph_app():
+    if "langgraph_app" not in st.session_state:
+        st.session_state.langgraph_app = build_app()
+    return st.session_state.langgraph_app
+
+
+def _format_langgraph_response(state: dict) -> str:
+    answer = state.get("draft_answer", "").strip()
+    if not answer:
+        answer = "죄송합니다. 이번 질문에 대한 답변을 생성하지 못했습니다."
+    citations = state.get("citations", [])
+    if citations:
+        lines = ["\n\n📚 참고 자료"]
+        for item in citations:
+            title = item.get("title", "출처 미상")
+            date = item.get("date", "날짜 미상")
+            report_id = item.get("report_id", "ref")
+            url = item.get("url", "")
+            line = f"- {title} ({date}) [{report_id}]"
+            if url:
+                line += f" {url}"
+            lines.append(line)
+        answer += "\n".join(lines)
+    return answer

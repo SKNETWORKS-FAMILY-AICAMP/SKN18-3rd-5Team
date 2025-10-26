@@ -39,7 +39,9 @@ def run(state: QAState) -> QAState:
         QAState: DISCLAIMER가 반영된 상태 객체
     """
     ans = state.get("draft_answer", "")
+    print(f"[Guardrail] start (len={len(ans)})")
     state["draft_answer"] = run_sync(_ensure_disclaimer(ans))
     # 정책 위반 플래그: 향후 비동기 정책 엔진 연계를 고려해 run_sync 사용
     state["policy_flag"] = run_sync(_check_policy(state["draft_answer"]))
+    print(f"[Guardrail] complete (disclaimer_appended={state['draft_answer'].endswith(DISCLAIMER)})")
     return state

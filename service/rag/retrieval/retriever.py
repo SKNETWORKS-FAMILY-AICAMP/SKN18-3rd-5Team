@@ -135,6 +135,11 @@ class Retriever:
             # 결과 후처리
             processed_results = []
             for result in results:
+                meta = getattr(result, 'metadata', {}) or {}
+                report_id = getattr(result, 'report_id', None) or meta.get('report_id')
+                date = getattr(result, 'date', None) or meta.get('date')
+                title = getattr(result, 'title', None) or meta.get('title')
+                url = getattr(result, 'url', None) or meta.get('url')
                 processed_result = {
                     'chunk_id': result.chunk_id,
                     'content': result.content,
@@ -145,11 +150,11 @@ class Retriever:
                 # 메타데이터 추가
                 if include_metadata:
                     processed_result.update({
-                        'report_id': result.report_id,
-                        'date': result.date,
-                        'title': result.title,
-                        'url': result.url,
-                        'metadata': result.metadata
+                        'report_id': report_id,
+                        'date': date,
+                        'title': title,
+                        'url': url,
+                        'metadata': meta
                     })
                 
                 processed_results.append(processed_result)
@@ -251,7 +256,13 @@ class Retriever:
                     date=row['date'],
                     title=row['title'],
                     url=row['url'],
-                    metadata={'source': 'keyword'}
+                    metadata={
+                        'source': 'keyword',
+                        'report_id': row['report_id'],
+                        'date': row['date'],
+                        'title': row['title'],
+                        'url': row['url'],
+                    }
                 ))
             
             logger.info(f"Keyword search found {len(results)} results")
