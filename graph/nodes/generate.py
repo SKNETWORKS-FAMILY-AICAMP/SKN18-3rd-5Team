@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from graph.state import QAState
 from service.llm.llm_client import chat
 from service.llm.prompt_templates import build_system_prompt, build_user_prompt
@@ -11,30 +13,36 @@ def _sanitize_context(context: str) -> str:
         return ""
 
     snippet = context
-    markers = [
-        "## 관련 문서",
-        "참고 문서들:",
-        "[문서 1]",
-        "DOCUMENTS:",
-        "관련 정보를 찾았습니다:",
-    ]
-    for marker in markers:
-        if marker in context:
-            parts = context.split(marker, 1)
-            snippet = parts[1] if len(parts) > 1 else parts[0]
-            break
+    marker_pattern = re.compile(
+        r"(##\s*관련\s*문서|참고\s*문서들:|DOCUMENTS:|관련 정보를 찾았습니다:)",
+        flags=re.IGNORECASE,
+    )
+    match = marker_pattern.search(context)
+    if match:
+        snippet = context[match.end():]
+    else:
+        user_prompt_pattern = re.compile(r"(사용자 질문:|질문:)", flags=re.IGNORECASE)
+        match_user = user_prompt_pattern.search(context)
+        if match_user:
+            snippet = context[match_user.end():]
 
-    lines = []
-    for line in snippet.splitlines():
-        cleaned = line.strip()
-        if not cleaned:
+    snippet = re.sub(r"당신은 도움이 되는.+?답변해주세요\.", " ", snippet, flags=re.DOTALL)
+    snippet = re.sub(r"(사용자 질문:|질문:).+?(?=(\[문서|\bDOCUMENT|\Z))", " ", snippet, flags=re.DOTALL | re.IGNORECASE)
+    snippet = re.sub(r"\s+", " ", snippet).strip()
+
+    if not snippet:
+        return ""
+
+    sentences = re.split(r"(?<=\.)\s+|\n", snippet)
+    cleaned_sentences = []
+    for sent in sentences:
+        text = sent.strip()
+        if not text:
             continue
-        if cleaned.startswith(("당신은 도움이 되는", "사용자 질문:", "질문:", "참고 문서들")):
-            continue
-        lines.append(cleaned)
-        if len(lines) >= 8:
+        cleaned_sentences.append(text)
+        if len(cleaned_sentences) >= 3:
             break
-    return " ".join(lines)
+    return " ".join(cleaned_sentences)
 
 
 def _fallback_answer(question: str, context: str) -> str:
