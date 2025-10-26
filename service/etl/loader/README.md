@@ -11,7 +11,7 @@ JSONL 파일을 PostgreSQL 데이터베이스에 로딩하고 임베딩을 생�
 docker-compose up -d
 
 # 2. 디렉토리 이동 및 데이터베이스 연결 테스트
-cd service/etl/loader_jsonl
+cd service/etl/loader
 python loader_cli.py db test
 
 # 3. 스키마 생성
@@ -153,7 +153,7 @@ python loader_cli.py db list  # 테이블별 행 수 확인
 ## 📁 파일 구조
 
 ```
-service/etl/loader_jsonl/
+service/etl/loader/
 ├── loader_cli.py           # 메인 CLI
 ├── embeddings.py           # 임베딩 생성 모듈
 ├── jsonl_to_postgres.py    # JSONL 로딩 모듈
@@ -163,5 +163,5 @@ service/etl/loader_jsonl/
 
 ## 🔗 관련 시스템
 
-- **RAG 시스템**: `service/rag_jsonl/` - 검색 및 생성
+- **RAG 시스템**: `service/rag/` - 검색 및 생성
 - **설정**: `config/vector_database.py` - 데이터베이스 설정

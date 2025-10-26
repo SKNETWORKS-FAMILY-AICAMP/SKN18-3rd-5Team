@@ -290,16 +290,16 @@ def main():
         epilog="""
 예시:
   # 검색
-  python rag_jsonl_cli.py search --query "삼성전자 매출" --top-k 5
+  python rag_cli.py search --query "삼성전자 매출" --top-k 5
   
   # 기업 필터링 검색
-  python rag_jsonl_cli.py search --query "매출 증가" --corp-filter "삼성전자"
+  python rag_cli.py search --query "매출 증가" --corp-filter "삼성전자"
   
   # 통계 조회
-  python rag_jsonl_cli.py stats
+  python rag_cli.py stats
   
   # 다른 모델 사용
-  python rag_jsonl_cli.py search --query "AI 기술" --model sentence-transformers/all-MiniLM-L6-v2
+  python rag_cli.py search --query "AI 기술" --model sentence-transformers/all-MiniLM-L6-v2
         """
     )
     

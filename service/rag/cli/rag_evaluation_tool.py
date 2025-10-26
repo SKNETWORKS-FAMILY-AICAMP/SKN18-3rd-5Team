@@ -16,18 +16,18 @@ from typing import List, Dict, Any, Optional
 
 # 프로젝트 루트를 Python 경로에 추가 (직접 실행 시 경로 문제 해결)
 current_file = Path(__file__).resolve()
-project_root = current_file.parents[3]  # service/rag_jsonl/cli/ -> project_root (SKN18-3rd-5Team)
+project_root = current_file.parents[3]  # service/rag/cli/ -> project_root (SKN18-3rd-5Team)
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from service.rag_jsonl.rag_system import RAGSystem
-from service.rag_jsonl.models.config import EmbeddingModelType
-from service.rag_jsonl.evaluation.evaluator import RAGEvaluator, EvaluationConfig
-from service.rag_jsonl.evaluation.metrics import MetricsCalculator
-from service.rag_jsonl.cli.rag_jsonl_cli import RAGJSONLSystem, get_db_config
-from service.rag_jsonl.cli.evaluation_queries import EVALUATION_QUERIES
+from service.rag.rag_system import RAGSystem
+from service.rag.models.config import EmbeddingModelType
+from service.rag.evaluation.evaluator import RAGEvaluator, EvaluationConfig
+from service.rag.evaluation.metrics import MetricsCalculator
+from service.rag.cli.rag_cli import RAGJSONLSystem, get_db_config
 from config.vector_database import get_vector_db_config
 import logging
+import json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class RAGEvaluationTool:
     def __init__(self, embedding_model: str = "intfloat/multilingual-e5-small"):
         """초기화"""
         self.embedding_model = embedding_model
-        self.rag_jsonl_system = RAGJSONLSystem(
+        self.rag_system = RAGJSONLSystem(
             db_config=get_db_config(),
             embedding_model="intfloat/multilingual-e5-small"
         )
@@ -48,6 +48,18 @@ class RAGEvaluationTool:
         self.metrics_calculator = MetricsCalculator()
         
         logger.info(f"RAG Evaluation Tool 초기화 완료: {embedding_model}")
+    
+    def _load_evaluation_queries(self) -> List[Dict[str, Any]]:
+        """평가 쿼리 로드"""
+        queries_path = project_root / "service" / "rag" / "cli" / "evaluation_queries.json"
+        try:
+            with open(queries_path, 'r', encoding='utf-8') as f:
+                queries = json.load(f)
+            logger.info(f"평가 쿼리 로드 완료: {len(queries)}개")
+            return queries
+        except Exception as e:
+            logger.error(f"평가 쿼리 로드 실패: {e}")
+            return []
     
     def run_evaluation(self, 
                       queries: List[Dict[str, Any]] = None,
@@ -67,7 +79,7 @@ class RAGEvaluationTool:
             검색 결과 리스트
         """
         if queries is None:
-            queries = EVALUATION_QUERIES
+            queries = self._load_evaluation_queries()
         
         logger.info("🚀 RAG 평가 시작")
         logger.info(f"📊 모델: {self.embedding_model}")
@@ -87,7 +99,7 @@ class RAGEvaluationTool:
             try:
                 # 검색 실행
                 start_time = time.time()
-                search_results = self.rag_jsonl_system.search(
+                search_results = self.rag_system.search(
                     query=query_text,
                     top_k=top_k,
                     min_similarity=min_similarity,
@@ -172,7 +184,7 @@ class RAGEvaluationTool:
         
         # JSON 파일 저장
         json_filename = f"rag_evaluation_{timestamp}.json"
-        json_path = project_root / "service" / "rag_jsonl" / "results" / json_filename
+        json_path = project_root / "service" / "rag" / "results" / json_filename
         
         # 결과 디렉토리 생성
         json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -192,7 +204,7 @@ class RAGEvaluationTool:
     def _save_detailed_results(self, results: List[Dict[str, Any]], timestamp: int):
         """상세 결과 텍스트 파일 저장"""
         detailed_filename = f"detailed_results_{timestamp}.json"
-        detailed_path = project_root / "service" / "rag_jsonl" / "results" / detailed_filename
+        detailed_path = project_root / "service" / "rag" / "results" / detailed_filename
         
         # 상세 결과 포맷팅 (complete_evaluation.py와 동일한 형식)
         detailed_results = []
@@ -232,7 +244,7 @@ class RAGEvaluationTool:
     def _save_summary_report(self, results: List[Dict[str, Any]], timestamp: int):
         """요약 리포트 텍스트 파일 저장"""
         summary_filename = f"summary_report_{timestamp}.txt"
-        summary_path = project_root / "service" / "rag_jsonl" / "results" / summary_filename
+        summary_path = project_root / "service" / "rag" / "results" / summary_filename
         
         # 요약 리포트 생성
         with open(summary_path, 'w', encoding='utf-8') as f:

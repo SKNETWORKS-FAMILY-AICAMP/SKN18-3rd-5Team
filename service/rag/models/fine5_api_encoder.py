@@ -19,7 +19,7 @@ except ImportError:
     import sys
     from pathlib import Path
     sys.path.append(str(Path(__file__).parent.parent.parent))
-    from service.rag_jsonl.models.config import EmbeddingModelType
+    from service.rag.models.config import EmbeddingModelType
 
 # .env 파일 로드
 load_dotenv()

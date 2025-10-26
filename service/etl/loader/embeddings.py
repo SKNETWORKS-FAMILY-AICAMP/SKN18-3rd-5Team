@@ -5,12 +5,12 @@ PostgreSQL의 chunks 테이블을 읽어 임베딩을 생성하고 embeddings_* 
 
 사용법:
     # ETL loader 디렉토리에서 실행
-    cd service/etl/loader_jsonl
+    cd service/etl/loader
     python embeddings.py --model e5 --batch-size 512
     
     # 프로젝트 루트에서 실행
-    python service/etl/loader_jsonl/embeddings.py --model kakaobank --limit 1000
-    python service/etl/loader_jsonl/embeddings.py --all-models
+    python service/etl/loader/embeddings.py --model kakaobank --limit 1000
+    python service/etl/loader/embeddings.py --all-models
 """
 
 import sys
@@ -25,10 +25,10 @@ import math
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from service.rag_jsonl.models.config import EmbeddingModelType
-from service.rag_jsonl.models.encoder import EmbeddingEncoder
-from service.rag_jsonl.vectorstore.pgvector_store import PgVectorStore
-from service.rag_jsonl.utils.error_handler import (
+from service.rag.models.config import EmbeddingModelType
+from service.rag.models.encoder import EmbeddingEncoder
+from service.rag.vectorstore.pgvector_store import PgVectorStore
+from service.rag.utils.error_handler import (
     BatchProcessingErrorHandler,
     ErrorHandler,
     ErrorContext
