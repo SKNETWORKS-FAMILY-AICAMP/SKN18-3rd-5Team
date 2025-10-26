@@ -16,8 +16,8 @@ load_dotenv()
 class DartConfig:
     API_KEY = os.getenv('DART_API_KEY', '')
     
-    # 실행 선택
-    URL = 'document.xml'        # 'list.json', 'document.xml', 'retry_failed'
+    # 실행 순서 (순차 실행)
+    URL_SEQUENCE = ['list.json', 'document.xml', 'retry_failed']
 
     # 공시 검색 설정 (1년치 고정)
     CORP_CLS = 'Y'              # Y(유가/코스피), K(코스닥), N(코넥스), E(기타)
@@ -435,22 +435,30 @@ class DartDownloader:
 # 메인 실행
 # ==========================================
 def main():
+    """메인 실행 함수 - 순서대로 실행"""
+    print(" DART API 다운로더 시작")
+    print(f"    실행 순서: {DartConfig.URL_SEQUENCE}")
+    
     downloader = DartDownloader()
     
-    if DartConfig.URL == 'list.json':
-        # 1단계: 1년치 공시 목록 다운로드
-        downloader.download_list()
+    # 순서대로 실행
+    for i, url_type in enumerate(DartConfig.URL_SEQUENCE, 1):
+        print(f"\n {i}단계: {url_type} 실행 중...")
         
-    elif DartConfig.URL == 'document.xml':
-        # 2단계: 전체 ZIP 다운로드
-        downloader.download_all_documents()
+        if url_type == 'list.json':
+            # 1단계: 1년치 공시 목록 다운로드
+            downloader.download_list()
+            
+        elif url_type == 'document.xml':
+            # 2단계: 전체 ZIP 다운로드
+            downloader.download_all_documents()
+        
+        elif url_type == 'retry_failed':
+            # 3단계: 실패한 파일들만 재다운로드
+            downloader.retry_failed_downloads()
+        
+        print(f"✅ {i}단계 완료: {url_type}")
     
-    elif DartConfig.URL == 'retry_failed':
-        # 3단계: 실패한 파일들만 재다운로드
-        downloader.retry_failed_downloads()
-    
-    else:
-        print("❌ URL을 'list.json', 'document.xml', 'retry_failed' 중 하나로 설정하세요")
 
 
 if __name__ == '__main__':

@@ -16,3 +16,7 @@ headless = false
 
 [browser]
 gatherUsageStats = false
+
+[global]
+# 마크다운 해석 비활성화
+disableWatchdogWarning = true

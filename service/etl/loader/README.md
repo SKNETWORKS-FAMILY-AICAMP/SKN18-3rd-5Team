@@ -21,7 +21,7 @@ python loader_cli.py db create
 python loader_cli.py db list
 
 # 5. 모델 다운로드 (처음 실행 시 필수)
-python loader_cli.py download --model all
+python loader_cli.py download --model
 
 # 6. 문서 로드
 python loader_cli.py load doc
@@ -145,6 +145,7 @@ python loader_cli.py db list  # 테이블별 행 수 확인
    - `python loader_cli.py download --model fine5`로 API 연결 테스트
 
 4. **데이터 초기화**
+
    ```bash
    python loader_cli.py truncate all
    python loader_cli.py db create

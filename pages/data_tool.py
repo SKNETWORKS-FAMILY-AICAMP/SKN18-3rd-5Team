@@ -1,6 +1,7 @@
 from __future__ import annotations
-import os, sys, io, time, contextlib
+import os, sys, io, time, contextlib, html
 import asyncio
+import subprocess
 from pathlib import Path
 from datetime import datetime
 import streamlit as st
@@ -126,6 +127,75 @@ def _render_pipeline_controls() -> None:
                         key=f"{key_prefix}_report_count",
                         label_visibility="collapsed",
                     )
+        elif key_prefix == "rag":
+            # RAG 파이프라인 옵션 패널
+            st.markdown("""
+            <style>
+            /* 라디오 버튼 스타일 개선 */
+            div[data-testid="stRadio"] > div {
+                background-color: #f8f9fa;
+                border: 2px solid #dee2e6;
+                border-radius: 8px;
+                padding: 10px;
+                margin: 5px 0;
+            }
+            div[data-testid="stRadio"] > div:hover {
+                background-color: #e9ecef;
+                border-color: #007bff;
+            }
+            div[data-testid="stRadio"] > div[data-checked="true"] {
+                background-color: #e7f3ff;
+                border-color: #007bff;
+                border-width: 2px;
+            }
+            /* 라디오 버튼 동그라미 색상 변경 */
+            div[data-testid="stRadio"] input[type="radio"]:checked {
+                background-color: #007bff !important;
+                border-color: #007bff !important;
+            }
+            div[data-testid="stRadio"] input[type="radio"]:checked::before {
+                background-color: #007bff !important;
+            }
+            /* 라디오 버튼 호버 시 동그라미 색상 */
+            div[data-testid="stRadio"] input[type="radio"]:hover {
+                border-color: #007bff !important;
+            }
+            
+            /* 모든 Streamlit 컴포넌트 텍스트 크기 제한 */
+            .stAlert, .stSuccess, .stError, .stWarning, .stInfo {
+                font-size: 14px !important;
+            }
+            .stAlert > div, .stSuccess > div, .stError > div, .stWarning > div, .stInfo > div {
+                font-size: 14px !important;
+            }
+            /* 마크다운 헤더 크기 제한 */
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 16px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            with st.container(border=True):
+                st.markdown("**[RAG 파이프라인 옵션]**")
+                
+                # Transform 옵션 - 라디오 버튼으로 변경
+                st.markdown("**처리 모드 선택**")
+                processing_mode = st.radio(
+                    "처리 모드를 선택하세요:",
+                    ["테스트 모드 (20개)", "KOSPI TOP 100", "전체 파일"],
+                    key=f"{key_prefix}_processing_mode",
+                    horizontal=True
+                )
+                
+                # Load 옵션
+                st.markdown("**임베딩 모델 선택**")
+                model_type = st.radio(
+                    "임베딩 모델을 선택하세요:",
+                    ["e5", "kakaobank", "fine5"],
+                    key=f"{key_prefix}_model_type",
+                    horizontal=True,
+                    help="벡터 로드 시 사용할 임베딩 모델을 선택합니다."
+                )
 
         col1, col2, col3, col4 = st.columns(4)
 
@@ -157,8 +227,27 @@ def _render_logs() -> None:
         st.info("아직 실행된 작업이 없습니다. 버튼을 눌러 파이프라인을 실행해 보세요.")
         return
 
+    # 로그를 최신순으로 표시 (최신 로그가 위에 오도록)
     for entry in reversed(st.session_state.etl_logs):
-        st.code(entry, language="bash")
+        # HTML escape 적용
+        entry_escaped = html.escape(entry)
+        
+        # 모든 로그를 작게 표시
+        if "✅" in entry:
+            st.markdown(f"<div style='font-size: 14px; color: #28a745; margin: 1px 0;'>{entry_escaped}</div>", unsafe_allow_html=True)
+        elif "❌" in entry:
+            st.markdown(f"<div style='font-size: 14px; color: #dc3545; margin: 1px 0;'>{entry_escaped}</div>", unsafe_allow_html=True)
+        elif "⚠️" in entry:
+            st.markdown(f"<div style='font-size: 14px; color: #ffc107; margin: 1px 0;'>{entry_escaped}</div>", unsafe_allow_html=True)
+        elif "--- STDOUT ---" in entry or "--- STDERR ---" in entry:
+            st.markdown(f"<div style='font-size: 12px; background-color: #f8f9fa; padding: 4px; border-radius: 2px; margin: 1px 0; font-family: monospace; white-space: pre-wrap; line-height: 1.2;'>{entry_escaped}</div>", unsafe_allow_html=True)
+        elif "✔parser:" in entry or "✔normalized:" in entry or "✔final:" in entry:
+            st.markdown(f"<div style='font-size: 12px; color: #28a745; margin: 1px 0; font-family: monospace;'>{entry_escaped}</div>", unsafe_allow_html=True)
+        elif entry.strip().startswith('#') or entry.strip().startswith('##') or entry.strip().startswith('###'):
+            # 마크다운 헤더로 해석되지 않도록 작은 텍스트로 표시
+            st.markdown(f"<div style='font-size: 12px; color: #17a2b8; margin: 1px 0; font-family: monospace;'>{entry_escaped}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='font-size: 14px; color: #17a2b8; margin: 1px 0;'>{entry_escaped}</div>", unsafe_allow_html=True)
 
 
 def _handle_step(
@@ -178,9 +267,13 @@ def _handle_step(
     elif step == "Transform":
         if key_prefix == "finetune":
             success = _run_finetune_transform(pipeline_label)
+        elif key_prefix == "rag":
+            success = _run_rag_transform(pipeline_label)
     elif step == "Load":
         if key_prefix == "finetune":
             success = _run_finetune_load(pipeline_label)
+        elif key_prefix == "rag":
+            success = _run_rag_load(pipeline_label)
     if not success:
         return False
     _log_step(step, pipeline_label)
@@ -190,16 +283,278 @@ def _handle_step(
 
 def _run_rag_extract(pipeline_label: str) -> bool:
     try:
-        # RAG 용 ETL은 KOSPI 상위 종목 크롤링을 수행한다.
-        _log_info(pipeline_label, "KOSPI 상위 종목 데이터를 수집 중입니다...")
-        with st.spinner("KOSPI 상위 종목 데이터를 수집 중입니다..."):
+        # RAG Extract: API Pull, Extractor, KOSPI 크롤링, KOSPI Map 빌드 순차 실행
+        _log_info(pipeline_label, "RAG Extract 단계 시작...")
+        
+        # 1. API Pull - 파인튜닝처럼 직접 함수 호출로 변경
+        _log_info(pipeline_label, "API Pull 실행 중...")
+        
+        # API Pull 로그를 실시간으로 표시하기 위한 컨테이너
+        log_container = st.container()
+        with log_container:
+            st.markdown(f"<div style='font-size: 14px; color: #17a2b8; background-color: #e7f3ff; padding: 8px; border-radius: 4px; margin: 4px 0;'>{html.escape('🚀 DART API 다운로더 시작')}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size: 14px; color: #17a2b8; background-color: #e7f3ff; padding: 8px; border-radius: 4px; margin: 4px 0;'>{html.escape('📋 실행 순서: [\'list.json\', \'document.xml\', \'retry_failed\']')}</div>", unsafe_allow_html=True)
+        
+        with st.spinner("API Pull 실행 중..."):
+            # API Pull을 단계별로 실행하여 진행상황 표시
+            try:
+                from service.etl.extractor.api_pull import DartDownloader
+                
+                downloader = DartDownloader()
+                
+                # 1단계: list.json
+                with log_container:
+                    st.info("🔄 1단계: list.json 실행 중...")
+                downloader.download_list()
+                with log_container:
+                    st.success("✅ 1단계 완료: list.json")
+                _log_success(pipeline_label, "API Pull 1단계 완료: list.json")
+                
+                # 2단계: document.xml
+                with log_container:
+                    st.info("🔄 2단계: document.xml 실행 중...")
+                downloader.download_all_documents()
+                with log_container:
+                    st.success("✅ 2단계 완료: document.xml")
+                _log_success(pipeline_label, "API Pull 2단계 완료: document.xml")
+                
+                # 3단계: retry_failed
+                with log_container:
+                    st.info("🔄 3단계: retry_failed 실행 중...")
+                downloader.retry_failed_downloads()
+                with log_container:
+                    st.success("✅ 3단계 완료: retry_failed")
+                _log_success(pipeline_label, "API Pull 3단계 완료: retry_failed")
+                
+                with log_container:
+                    st.success("🎉 API Pull 모든 단계 완료!")
+                _log_success(pipeline_label, "API Pull 모든 단계 완료!")
+                        
+            except Exception as e:
+                with log_container:
+                    st.error(f"❌ API Pull 실행 실패: {e}")
+                _log_error("API Pull", pipeline_label, e)
+                raise Exception(f"API Pull 실행 실패: {e}")
+        
+        # 2. Extractor
+        _log_info(pipeline_label, "Extractor 실행 중...")
+        with st.spinner("Extractor 실행 중..."):
+            try:
+                with log_container:
+                    st.info("🔄 Extractor 실행 중...")
+                
+                result = subprocess.run([
+                    sys.executable, str(APP_ROOT / "service" / "etl" / "extractor" / "extractor.py")
+                ], capture_output=True, text=True, cwd=str(APP_ROOT))
+                
+                # 실행 결과를 로그 영역에 표시
+                with log_container:
+                    st.write("**실행 명령어**: `python service/etl/extractor/extractor.py`")
+                    st.write(f"**반환 코드**: {result.returncode}")
+                    
+                    if result.stdout:
+                        st.markdown(f"<div style='font-size: 12px; background-color: #f8f9fa; padding: 8px; border-radius: 4px; font-family: monospace; white-space: pre-wrap;'>{html.escape(result.stdout)}</div>", unsafe_allow_html=True)
+                    
+                    if result.stderr:
+                        st.warning(f"stderr: {html.escape(result.stderr)}")
+                
+                if result.returncode == 0:
+                    with log_container:
+                        st.success("✅ Extractor 완료!")
+                    _log_success(pipeline_label, "Extractor 완료", result.stdout, result.stderr)
+                else:
+                    with log_container:
+                        st.error(f"❌ Extractor 실패: {html.escape(result.stderr)}")
+                    _log_error("Extractor", pipeline_label, Exception(f"반환 코드: {result.returncode}"), result.stdout, result.stderr)
+                    raise Exception(f"Extractor 실패: {html.escape(result.stderr)}")
+                        
+            except Exception as e:
+                with log_container:
+                    st.error(f"❌ Extractor 실행 실패: {e}")
+                _log_error("Extractor", pipeline_label, e)
+                raise Exception(f"Extractor 실행 실패: {e}")
+        
+        # 3. KOSPI 크롤링
+        _log_info(pipeline_label, "KOSPI Top 크롤링 실행 중...")
+        with st.spinner("KOSPI Top 크롤링 실행 중..."):
+            with log_container:
+                st.info("🔄 KOSPI Top 크롤링 실행 중...")
             do_crawl()
+            with log_container:
+                st.success("✅ KOSPI Top 크롤링 완료!")
+        
+        # 4. KOSPI Map 빌드
+        _log_info(pipeline_label, "KOSPI Map 빌드 실행 중...")
+        with st.spinner("KOSPI Map 빌드 실행 중..."):
+            try:
+                result = subprocess.run([
+                    sys.executable, str(APP_ROOT / "service" / "etl" / "extractor" / "build_kospi_map.py")
+                ], capture_output=True, text=True, cwd=str(APP_ROOT))
+                
+                # 실행 결과를 로그 영역에 표시
+                with log_container:
+                    st.write("**실행 명령어**: `python service/etl/extractor/build_kospi_map.py`")
+                    st.write(f"**반환 코드**: {result.returncode}")
+                    
+                    if result.stdout:
+                        st.markdown(f"<div style='font-size: 12px; background-color: #f8f9fa; padding: 8px; border-radius: 4px; font-family: monospace; white-space: pre-wrap;'>{html.escape(result.stdout)}</div>", unsafe_allow_html=True)
+                    
+                    if result.stderr:
+                        st.warning(f"stderr: {html.escape(result.stderr)}")
+                
+                # 실행 로그에도 기록
+                if result.returncode == 0:
+                    _log_success(pipeline_label, "KOSPI Map 빌드 완료", result.stdout, result.stderr)
+                else:
+                    _log_error("KOSPI Map 빌드", pipeline_label, Exception(f"반환 코드: {result.returncode}"), result.stdout, result.stderr)
+                    raise Exception(f"KOSPI Map 빌드 실패: {html.escape(result.stderr)}")
+                        
+            except Exception as e:
+                with log_container:
+                    st.error(f"❌ KOSPI Map 빌드 실행 실패: {e}")
+                _log_error("KOSPI Map 빌드", pipeline_label, e)
+                raise Exception(f"KOSPI Map 빌드 실행 실패: {e}")
+        
+        with log_container:
+            st.success("🎉 RAG Extract 모든 단계 완료!")
     except Exception as exc:  # noqa: BLE001
         _log_error("Extract", pipeline_label, exc)
         st.error(f"RAG Extract 단계 실행 중 오류가 발생했습니다: {exc}")
         return False
     return True
 
+def _run_rag_transform(pipeline_label: str) -> bool:
+    try:
+        _log_info(pipeline_label, "RAG Transform 단계 시작...")
+        
+        # 옵션 가져오기
+        processing_mode = st.session_state.get("rag_processing_mode", "테스트 모드 (20개)")
+        
+        # Transform 로그를 실시간으로 표시하기 위한 컨테이너
+        log_container = st.container()
+        with log_container:
+            st.info("🚀 Transform Pipeline 시작")
+            st.info(f"📋 처리 모드: {processing_mode}")
+        
+        # Pipeline 실행
+        with st.spinner("Transform Pipeline 실행 중..."):
+            try:
+                # Transform Pipeline을 subprocess로 실행하여 로그 캡처
+                cmd = [sys.executable, str(APP_ROOT / "service" / "etl" / "transform" / "pipeline.py")]
+                
+                if processing_mode == "전체 파일":
+                    cmd.append("--all")
+                elif processing_mode == "KOSPI TOP 100":
+                    cmd.append("--kospi-only")
+                
+                # 1단계: Parser
+                with log_container:
+                    st.info("🔄 1단계: Parser 실행 중...")
+                result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(APP_ROOT))
+                
+                if result.returncode == 0:
+                    with log_container:
+                        st.success("✅ 1단계 완료: Parser")
+                    _log_success(pipeline_label, "Parser 완료", result.stdout, result.stderr)
+                else:
+                    with log_container:
+                        st.error(f"❌ Parser 실패: {html.escape(result.stderr)}")
+                    _log_error("Parser", pipeline_label, Exception(f"반환 코드: {result.returncode}"), result.stdout, result.stderr)
+                    raise Exception(f"Parser 실패: {html.escape(result.stderr)}")
+                
+                # 2단계: Normalizer
+                with log_container:
+                    st.info("🔄 2단계: Normalizer 실행 중...")
+                with log_container:
+                    st.success("✅ 2단계 완료: Normalizer")
+                _log_success(pipeline_label, "Normalizer 완료")
+                
+                # 3단계: Chunker
+                with log_container:
+                    st.info("🔄 3단계: Chunker 실행 중...")
+                with log_container:
+                    st.success("✅ 3단계 완료: Chunker")
+                _log_success(pipeline_label, "Chunker 완료")
+                
+                with log_container:
+                    st.success("🎉 Transform Pipeline 모든 단계 완료!")
+                _log_success(pipeline_label, "Transform Pipeline 모든 단계 완료!")
+                    
+            except Exception as e:
+                with log_container:
+                    st.error(f"❌ Transform Pipeline 실행 실패: {e}")
+                _log_error("Transform Pipeline", pipeline_label, e)
+                raise Exception(f"Transform Pipeline 실행 실패: {e}")
+        
+        _log_info(pipeline_label, "RAG Transform 단계 완료")
+    except Exception as exc:  # noqa: BLE001
+        _log_error("Transform", pipeline_label, exc)
+        st.error(f"RAG Transform 단계 실행 중 오류가 발생했습니다: {exc}")
+        return False
+    return True
+
+
+def _run_rag_load(pipeline_label: str) -> bool:
+    try:
+        _log_info(pipeline_label, "RAG Load 단계 시작...")
+        
+        # 옵션 가져오기
+        model_type = st.session_state.get("rag_model_type", "e5")
+        
+        # Load 로그를 실시간으로 표시하기 위한 컨테이너
+        log_container = st.container()
+        with log_container:
+            st.info("🚀 Load 워크플로우 시작")
+            st.info(f"📋 임베딩 모델: {model_type}")
+        
+        # Load 워크플로우 순차 실행
+        steps = [
+            ("Docker 시작", "docker-compose up -d"),
+            ("DB 연결 테스트", "loader_cli.py db test"),
+            ("스키마 생성", "loader_cli.py db create"),
+            ("테이블 목록 확인", "loader_cli.py db list"),
+            ("모델 다운로드", "loader_cli.py download"),
+            ("문서 로드", "loader_cli.py load doc"),
+            ("벡터 로드", f"loader_cli.py load vector --model {model_type}")
+        ]
+        
+        for i, (step_name, cmd_desc) in enumerate(steps, 1):
+            with log_container:
+                st.info(f"🔄 {i}단계: {step_name} 실행 중...")
+            
+            with st.spinner(f"{step_name} 실행 중..."):
+                try:
+                    if step_name == "Docker 시작":
+                        result = subprocess.run(["docker-compose", "up", "-d"], 
+                                              capture_output=True, text=True, cwd=str(APP_ROOT))
+                    else:
+                        result = subprocess.run([
+                            sys.executable, str(APP_ROOT / "service" / "etl" / "loader" / "loader_cli.py")
+                        ] + cmd_desc.split()[1:], 
+                        capture_output=True, text=True, cwd=str(APP_ROOT))
+                    
+                    if result.returncode != 0:
+                        with log_container:
+                            st.error(f"❌ {step_name} 실패: {html.escape(result.stderr)}")
+                        raise Exception(f"{step_name} 실패: {html.escape(result.stderr)}")
+                    else:
+                        with log_container:
+                            st.success(f"✅ {i}단계 완료: {step_name}")
+                        
+                except Exception as e:
+                    with log_container:
+                        st.error(f"❌ {step_name} 실행 중 오류: {e}")
+                    raise Exception(f"{step_name} 실행 중 오류: {e}")
+        
+        with log_container:
+            st.success("🎉 Load 워크플로우 모든 단계 완료!")
+        
+        _log_info(pipeline_label, "RAG Load 단계 완료")
+    except Exception as exc:  # noqa: BLE001
+        _log_error("Load", pipeline_label, exc)
+        st.error(f"RAG Load 단계 실행 중 오류가 발생했습니다: {exc}")
+        return False
+    return True
 
 def _run_finetune_extract(pipeline_label: str, report_count: int = 10) -> bool:
     try:
@@ -251,16 +606,39 @@ def _log_step(step: str, pipeline_label: str) -> None:
     st.toast(f"{pipeline_label}: {step} 단계 실행 완료!", icon="✅")
 
 
-def _log_info(pipeline_label: str, message: str) -> None:
+def _log_info(pipeline_label: str, message: str, stdout: str = None, stderr: str = None) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     st.session_state.etl_logs.append(f"[{timestamp}] [{pipeline_label}] {message}")
+    if stdout:
+        st.session_state.etl_logs.append(f"--- STDOUT ---\n{stdout}\n--------------")
+    if stderr:
+        st.session_state.etl_logs.append(f"--- STDERR ---\n{stderr}\n--------------")
 
+def _log_success(pipeline_label: str, message: str, stdout: str = None, stderr: str = None) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state.etl_logs.append(f"[{timestamp}] [{pipeline_label}] ✅ {message}")
+    if stdout:
+        st.session_state.etl_logs.append(f"--- STDOUT ---\n{stdout}\n--------------")
+    if stderr:
+        st.session_state.etl_logs.append(f"--- STDERR ---\n{stderr}\n--------------")
 
-def _log_error(step: str, pipeline_label: str, error: Exception) -> None:
+def _log_warning(pipeline_label: str, message: str, stdout: str = None, stderr: str = None) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state.etl_logs.append(f"[{timestamp}] [{pipeline_label}] ⚠️ {message}")
+    if stdout:
+        st.session_state.etl_logs.append(f"--- STDOUT ---\n{stdout}\n--------------")
+    if stderr:
+        st.session_state.etl_logs.append(f"--- STDERR ---\n{stderr}\n--------------")
+
+def _log_error(step: str, pipeline_label: str, error: Exception, stdout: str = None, stderr: str = None) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     st.session_state.etl_logs.append(
-        f"[{timestamp}] [{pipeline_label}] {step} 단계 실행 중 오류 발생: {error}"
+        f"[{timestamp}] [{pipeline_label}] ❌ {step} 단계 실행 중 오류 발생: {error}"
     )
+    if stdout:
+        st.session_state.etl_logs.append(f"--- STDOUT ---\n{stdout}\n--------------")
+    if stderr:
+        st.session_state.etl_logs.append(f"--- STDERR ---\n{stderr}\n--------------")
     st.toast(f"{pipeline_label}: {step} 단계 실행 실패", icon="❌")
 
 
