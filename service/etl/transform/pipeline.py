@@ -16,14 +16,92 @@ RAG 데이터 변환 파이프라인
 import sys
 import time
 import shutil
+import json
+import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Set
 
 # 공통 유틸리티 import
 from utils import get_project_paths, get_transform_paths
 
 # 현재 스크립트의 디렉토리
 SCRIPT_DIR = Path(__file__).parent  # service/etl/transform
+
+def load_kospi_mapping() -> dict:
+    """KOSPI 기업 매핑 로드"""
+    script_dir, etl_dir, service_dir, project_root, data_dir = get_project_paths(__file__)
+    kospi_map_path = data_dir / "kospi_top100_map.json"
+    
+    try:
+        with open(kospi_map_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"⚠️  KOSPI 매핑 파일을 찾을 수 없습니다: {kospi_map_path}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"⚠️  KOSPI 매핑 파일 JSON 파싱 오류: {e}")
+        return {}
+
+def get_company_codes(company_names: List[str]) -> Set[str]:
+    """기업명 리스트를 corp_code로 변환"""
+    kospi_mapping = load_kospi_mapping()
+    corp_codes = set()
+    
+    for company_name in company_names:
+        if company_name in kospi_mapping:
+            corp_codes.add(kospi_mapping[company_name])
+            print(f"  ✅ {company_name} → {kospi_mapping[company_name]}")
+        else:
+            print(f"  ⚠️  {company_name}을(를) KOSPI 매핑에서 찾을 수 없습니다")
+    
+    return corp_codes
+
+def extract_corp_code_from_markdown(file_path: Path) -> Optional[str]:
+    """마크다운 파일에서 corp_code 추출"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # 파일 상단의 YAML front matter에서 corp_code 추출
+            lines = f.readlines()
+            for line in lines[:20]:  # 상단 20줄만 확인
+                if line.startswith('corp_code:'):
+                    return line.split(':', 1)[1].strip()
+    except Exception as e:
+        print(f"  ⚠️  {file_path.name}에서 corp_code 추출 실패: {e}")
+    return None
+
+def filter_files_by_company(input_files: List[Path], corp_codes: Set[str]) -> List[Path]:
+    """특정 기업의 corp_code에 해당하는 파일만 필터링"""
+    if not corp_codes:
+        return input_files
+    
+    filtered_files = []
+    processed_count = 0
+    
+    print(f"  🔍 {len(input_files)}개 파일에서 corp_code 추출 중...")
+    
+    for file_path in input_files:
+        file_corp_code = extract_corp_code_from_markdown(file_path)
+        if file_corp_code and file_corp_code in corp_codes:
+            filtered_files.append(file_path)
+        processed_count += 1
+        
+        # 진행률 표시 (100개마다)
+        if processed_count % 100 == 0:
+            print(f"    진행률: {processed_count}/{len(input_files)} ({processed_count/len(input_files)*100:.1f}%)")
+    
+    print(f"  📊 필터링 결과: {len(filtered_files)}/{len(input_files)} 파일")
+    return filtered_files
+
+def get_kospi_corp_codes() -> Set[str]:
+    """KOSPI TOP 100 기업의 corp_code 반환"""
+    kospi_mapping = load_kospi_mapping()
+    if not kospi_mapping:
+        print("⚠️  KOSPI 매핑을 로드할 수 없습니다")
+        return set()
+    
+    corp_codes = set(kospi_mapping.values())
+    print(f"  📈 KOSPI TOP 100 기업: {len(corp_codes)}개 기업")
+    return corp_codes
 
 def cleanup_parser_files():
     """Parser 파일 정리 (Normalizer 완료 후)"""
@@ -73,7 +151,7 @@ def cleanup_normalized_files():
     else:
         print("ℹ️  Normalized 디렉토리 없음")
 
-def run_parser(process_all: bool = False) -> bool:
+def run_parser(process_all: bool = False, company_names: Optional[List[str]] = None, kospi_only: bool = False) -> bool:
     """Step 1: Parser 실행"""
     print("=" * 80)
     print("🔧 Step 1: Parser 실행")
@@ -88,7 +166,20 @@ def run_parser(process_all: bool = False) -> bool:
         spec.loader.exec_module(parser_module)
         parser_main = parser_module.main
         
-        parser_main(process_all=process_all)
+        # parser.py의 main 함수에 파라미터 전달
+        if hasattr(parser_module, 'main') and callable(parser_module.main):
+            # parser.py가 새로운 파라미터를 지원하는지 확인
+            import inspect
+            sig = inspect.signature(parser_module.main)
+            if 'kospi_only' in sig.parameters:
+                parser_main(process_all=process_all, company_names=company_names, kospi_only=kospi_only)
+            elif 'company_names' in sig.parameters:
+                parser_main(process_all=process_all, company_names=company_names)
+            else:
+                parser_main(process_all=process_all)
+        else:
+            parser_main(process_all=process_all)
+        
         print("✅ Parser 완료")
         return True
         
@@ -166,7 +257,7 @@ def run_chunker() -> bool:
         print(f"❌ Chunker 실패: {e}")
         return False
 
-def check_input_files(process_all: bool = False) -> bool:
+def check_input_files(process_all: bool = False, company_names: Optional[List[str]] = None, kospi_only: bool = False) -> bool:
     """입력 파일 확인"""
     print("=" * 80)
     print("📁 입력 파일 확인")
@@ -189,6 +280,26 @@ def check_input_files(process_all: bool = False) -> bool:
     
     print(f"✅ 마크다운 파일: {len(md_files)}개")
     
+    # 기업 필터링 적용
+    if kospi_only:
+        print(f"\n📈 KOSPI TOP 100 기업 필터링 적용:")
+        corp_codes = get_kospi_corp_codes()
+        if corp_codes:
+            md_files = filter_files_by_company(md_files, corp_codes)
+        else:
+            print("  ❌ KOSPI 기업 코드를 가져올 수 없습니다")
+            return False
+    elif company_names:
+        print(f"\n🏢 특정 기업 필터링 적용:")
+        print(f"   대상 기업: {', '.join(company_names)}")
+        corp_codes = get_company_codes(company_names)
+        if corp_codes:
+            md_files = filter_files_by_company(md_files, corp_codes)
+        else:
+            print("  ❌ 유효한 기업 코드가 없습니다")
+            return False
+    
+    # 처리 모드에 따른 파일 수 제한
     if process_all:
         print(f"   → 전체 파일 처리 모드")
     else:
@@ -267,40 +378,74 @@ def get_pipeline_stats():
 def main():
     """메인 파이프라인 실행"""
     
-    # 명령행 인자 처리
-    if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h"]:
-        print("RAG 데이터 변환 파이프라인")
-        print()
-        print("사용법:")
-        print(f"  python {Path(__file__).name}        # 테스트 모드 (20개 파일)")
-        print(f"  python {Path(__file__).name} --all  # 전체 파일 처리")
-        print(f"  python {Path(__file__).name} --help # 도움말")
-        print()
-        print("파이프라인 단계:")
-        print("  1. Parser: 마크다운 → 구조화된 청크")
-        print("  2. Normalizer: 텍스트 정규화 및 단위 변환")
-        print("     → Parser 파일 자동 정리")
-        print("  3. Chunker: 스마트 청킹 및 메타데이터 추가")
-        print("     → Normalized 파일 자동 정리")
-        print()
-        print("자동 정리:")
-        print("  • Normalizer 완료 후 Parser 파일 삭제")
-        print("  • Chunker 완료 후 Normalized 파일 삭제")
-        print("  • 최종 결과만 Final 폴더에 보존")
-        sys.exit(0)
+    # 명령행 인자 파싱
+    parser = argparse.ArgumentParser(
+        description="RAG 데이터 변환 파이프라인",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+파이프라인 단계:
+  1. Parser: 마크다운 → 구조화된 청크
+  2. Normalizer: 텍스트 정규화 및 단위 변환
+     → Parser 파일 자동 정리
+  3. Chunker: 스마트 청킹 및 메타데이터 추가
+     → Normalized 파일 자동 정리
+
+자동 정리:
+  • Normalizer 완료 후 Parser 파일 삭제
+  • Chunker 완료 후 Normalized 파일 삭제
+  • 최종 결과만 Final 폴더에 보존
+
+사용 예시:
+  python pipeline.py                    # 테스트 모드 (20개 파일)
+  python pipeline.py --all              # 전체 파일 처리
+  python pipeline.py --kospi-only       # KOSPI TOP 100 기업만 처리 (테스트 모드)
+  python pipeline.py --all --kospi-only # KOSPI TOP 100 기업 전체 파일 처리
+  python pipeline.py --all --companies 삼성전자      # 특정 기업 전체 파일 처리
+        """
+    )
     
-    # --all 옵션 확인
-    process_all = len(sys.argv) > 1 and sys.argv[1] == "--all"
+    parser.add_argument(
+        "--all", 
+        action="store_true", 
+        help="전체 파일 처리 (기본값: 테스트 모드 20개 파일)"
+    )
+    
+    parser.add_argument(
+        "--companies", 
+        nargs="+", 
+        help="처리할 기업명 리스트 (예: --companies 삼성전자 SK하이닉스)"
+    )
+    
+    parser.add_argument(
+        "--kospi-only", 
+        action="store_true", 
+        help="KOSPI TOP 100 기업만 처리"
+    )
+    
+    args = parser.parse_args()
+    
+    process_all = args.all
+    company_names = args.companies
+    kospi_only = args.kospi_only
+    
+    # 옵션 충돌 검사
+    if company_names and kospi_only:
+        print("❌ --companies와 --kospi-only 옵션을 동시에 사용할 수 없습니다")
+        sys.exit(1)
     
     # 시작 시간 기록
     start_time = time.time()
     
-    print("🚀 RAG 데이터 변환 파이프라인 시작")
+    print("  RAG 데이터 변환 파이프라인 시작")
     print(f"   모드: {'전체 파일 처리' if process_all else '테스트 모드 (20개 파일)'}")
+    if kospi_only:
+        print(f"   기업 필터: KOSPI TOP 100 기업만")
+    elif company_names:
+        print(f"   기업 필터: {', '.join(company_names)}")
     print(f"   시작 시간: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 1. 입력 파일 확인
-    if not check_input_files(process_all):
+    if not check_input_files(process_all, company_names, kospi_only):
         print("\n❌ 입력 파일 확인 실패")
         sys.exit(1)
     
@@ -314,7 +459,7 @@ def main():
     total_steps = 3
     
     # Step 1: Parser
-    if run_parser(process_all):
+    if run_parser(process_all, company_names, kospi_only):
         success_count += 1
     else:
         print("\n❌ 파이프라인 중단: Parser 실패")
@@ -342,7 +487,7 @@ def main():
     duration = end_time - start_time
     
     print("\n" + "=" * 80)
-    print("🎉 파이프라인 완료!")
+    print("     파이프라인 완료!")
     print("=" * 80)
     print(f"   성공 단계: {success_count}/{total_steps}")
     print(f"   소요 시간: {duration:.1f}초")

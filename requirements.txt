@@ -25,6 +25,8 @@ langchain-text-splitters>=0.0.1  # RecursiveCharacterTextSplitter
 
 # 데이터 처리 (가벼운 버전)
 pandas>=1.5.0
+pyarrow>=10.0.0  # Parquet 파일 읽기/쓰기 (고성능 컬럼형 데이터 포맷)
+polars>=0.20.0   # 고성능 DataFrame 라이브러리 (Pandas 대안, 빠른 Parquet 처리)
 
 # XML 파싱
 lxml==5.2.1
