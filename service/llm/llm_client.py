@@ -158,8 +158,10 @@ def chat(system: str, user: str, max_tokens: int = 512) -> str:
         attention_mask=attention_mask,
         max_new_tokens=max_tokens,
         do_sample=True,
-        temperature=0.3,
-        top_p=0.3,
+        # temperature=0.3,
+        # top_p=0.3,
+        temperature=0.7,
+        top_p=0.9,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         # .env의 IS_RUNPOD 값에 따라 KV-cache 사용 여부 결정
