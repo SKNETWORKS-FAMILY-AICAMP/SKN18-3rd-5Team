@@ -60,7 +60,7 @@ def render_top():
 # 2. 대시보드 구현
 ###################
 
-def render_status_overview(docs="1,248", acc="92%", last="2025-10-23 19:16"):
+def render_status_overview(docs="5,076", acc="≈89%", last="2025-10-20"):
     st.markdown(f"""
     <div style="margin: 2rem 0 1rem 0;">
         <h2 style="color: #1f2d3d; font-size: 1.6rem; font-weight: 700; margin-bottom: 0.3rem;">
@@ -117,7 +117,7 @@ def render_status_overview(docs="1,248", acc="92%", last="2025-10-23 19:16"):
                 <div style="font-size:2.5rem;">🎯</div>
                 <div style="text-align:left;">
                     <div style="font-size:1.6rem; font-weight:700; color:#D32F2F;">{acc}</div>
-                    <div style="font-size:0.9rem; color:#555;">평균 응답 정확도</div>
+                    <div style="font-size:0.9rem; color:#555;">평균 유사도</div>
                 </div>
                 </div>
             </div>
@@ -135,7 +135,7 @@ def render_status_overview(docs="1,248", acc="92%", last="2025-10-23 19:16"):
                 <div style="font-size:2.5rem;">⏰</div>
                 <div style="text-align:left;">
                     <div style="font-size:1.6rem; font-weight:700; color:#6A1B9A;">{last}</div>
-                    <div style="font-size:0.9rem; color:#555;">마지막 학습 시간</div>
+                    <div style="font-size:0.9rem; color:#555;">마지막 학습 일자</div>
                 </div>
                 </div>
             </div>

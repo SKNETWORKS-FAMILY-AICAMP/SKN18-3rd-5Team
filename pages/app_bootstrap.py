@@ -101,15 +101,14 @@ def render_sidebar():
 
     /* 🖼️ 이미지 중앙 정렬 */
     [data-testid="stSidebar"] .stImage img {
-    position: relative;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 30px;
-    height: 300px;
-    object-fit: contain; /* or cover */
-    border-radius: 12px;
-    margin-bottom: 1rem;
-}
+        position: relative;
+        left: calc(50% - 67px);
+        width: 30px;
+        height: 216px; # 우측 배너 위치와 맞추기
+        object-fit: contain; /* or cover */
+        border-radius: 12px;
+        margin-bottom: 1rem;
+    }
     /* 💬 헤더 스타일 */
     [data-testid="stSidebar"] h1, 
     [data-testid="stSidebar"] h2, 
