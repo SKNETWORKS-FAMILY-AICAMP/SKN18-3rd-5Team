@@ -223,7 +223,8 @@ def _handle_user_input(user_input: str) -> None:
     try:
         app = _get_langgraph_app()
         user_level = st.session_state.get("user_level", "intermediate")
-        lg_state = app.invoke({"question": user_input, "user_level": user_level})
+        with st.spinner("답변을 준비하고 있습니다..."):
+            lg_state = app.invoke({"question": user_input, "user_level": user_level})
         assistant_reply = _format_langgraph_response(lg_state)
         st.session_state["latest_langgraph_state"] = lg_state
         print(f"[Chat] assistant_reply={assistant_reply[:200]!r}")
