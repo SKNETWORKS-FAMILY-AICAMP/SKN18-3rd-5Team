@@ -28,36 +28,42 @@
 # 프로젝트 구조
 
 ```text  
-├── app.py                 # Streamlit 진입점  
-├── pages/                 # Streamlit 멀티 페이지 모듈  
-│   ├── app_bootstrap.py   # 공통 페이지 설정 및 사이드바 메뉴 정의  
-│   ├── page1.py           # 채팅 Q&A 페이지  
-│   ├── data_tool.py       # 데이터 도구 페이지  
-│   └── views/             # 채팅 등 공통 뷰 컴포넌트 (page에서 이용)  
-│       ├── chat.py        # 채팅 UI 레이아웃  
-│       ├── {view}.py      #  
-│       ├── {veiw}.py      #  
-│       └── ...  
-├── service/               # LLM등 로직/기능  
-│   ├── chat_service.py    # SQLite 기반 채팅 세션 관리  
-│   └── ...  
-├── data/                  # 분석·시각화에 사용하는 원천 데이터  
-│   └── app_database.db    # SQLite 데이터베이스  
-├── assets/                # 이미지, 아이콘 등 정적 리소스  
-├── config/                # 환경 설정 파일 (예: YAML, JSON)  
-├── graph/                 # lang-graph  
-│   ├── state.py                  # 상태 스키마(QAState)  
-│   ├── app_graph.py              # 그래프 구성/compile/팩토리 함수  
-│   ├── nodes/                    # LangGraph 노드들  
-│   └── utils/  
-├── models/  
-│   ├── adapters/                     
-│   └── base/  
-├── requirements.txt       # Python 의존성 목록  
-├── cleanup_system.p       # Python 의존성 목록  
-├── requirements.txt       # Python 의존성 목록  
-├── requirements.txt       # Python 의존성 목록  
-└── README.md  
+├── app.py                 # Streamlit 진입점
+├── pages/                 # Streamlit 멀티 페이지 모듈
+│   ├── app_bootstrap.py   # 공통 페이지 설정 및 사이드바 메뉴 정의
+│   ├── page1.py           # 채팅 Q&A 페이지
+│   ├── data_tool.py       # 데이터 도구 페이지
+│   └── views/             # 채팅 등 공통 뷰 컴포넌트 (page에서 이용)
+│       ├── chat.py        # 채팅 UI 레이아웃
+│       ├── {view}.py      #
+│       ├── {veiw}.py      #
+│       └── ...
+├── service/               # LLM등 로직/기능
+│   ├── crawling/   # 데이터 크롤링
+│   ├── etl/   
+│   ├── fine_tuning/    # 데이터 정제 및 llama_factory
+│   ├── llm/    # LLM
+│   ├── pgv_temp/ 
+│   ├── rage/  
+│   ├── chat_service.py    # SQLite 기반 채팅 세션 관리
+│   └── ...
+├── data/                  # 분석·시각화에 사용하는 원천 데이터
+│   └── app_database.db    # SQLite 데이터베이스
+├── assets/                # 이미지, 아이콘 등 정적 리소스
+├── config/                # 환경 설정 파일 (예: YAML, JSON)
+├── graph/                 # lang-graph
+│   ├── state.py                  # 상태 스키마(QAState)
+│   ├── app_graph.py              # 그래프 구성/compile/팩토리 함수
+│   ├── nodes/                    # LangGraph 노드들
+│   └── utils/
+├── models/
+│   ├── adapters/                   
+│   └── base/
+├── requirements.txt       # Python 의존성 목록
+├── cleanup_system.py
+├── docker-compose.yml
+├── migrate_to_sqlite.py
+└── README.md
 ```
 
 # 도구/기술
@@ -155,7 +161,7 @@ flowchart TB
 ```
 
 
-2. ## 시스템 구성 및 흐름도
+## 2. 시스템 구성 및 흐름도
 
 ```mermaid
 flowchart TB
@@ -265,6 +271,7 @@ flowchart TB
   - **데이터 규모**: 5,076 문서 → 1,143,618 청크  
   - **벡터 DB**: PostgreSQL + pgvector  
 
+
 ---
 
 ### 전체 파이프라인
@@ -356,19 +363,19 @@ flowchart TB
 
 # 인사이트
 ### 1️⃣ 정형 데이터와 비정형 텍스트의 경계 허물기
-- 금융 데이터는 대부분 수치(JSON, 테이블)로 제공되지만, 이를 문장으로 재구성하면 LLM이 문맥·인과를 이해할 수 있게 된다.
-- 즉, 정량데이터 → 자연어 NLG → 임베딩 과정이 RAG의 핵심 전처리 파이프라인임을 체득했다.
+- 금융 데이터는 대부분 수치(json, xml, 테이블)로 제공되지만, 이를 문장으로 재구성하면 LLM이 문맥·인과를 이해할 수 있게 된다.
+- 즉, 정량데이터 → 자연어 문서화 → 임베딩 과정이 RAG의 핵심 전처리 파이프라인
 ### 2️⃣ RAG 구조가 금융 분석 자동화의 실마리
-- 벡터 검색 기반으로 공시문, IR 자료, 뉴스까지 통합 검색하면 모델이 직접 리서치 문서처럼 분석·요약할 수 있다.
+- 벡터 검색 기반으로 공시문서, 애널리스트 분석 리포트까지 통합 검색하면 모델이 직접 리서치 문서처럼 분석·요약할 수 있다.
 - 금융 데이터의 “출처·근거”를 함께 제시함으로써 신뢰성 있는 AI 응답 구조를 구현할 수 있었다.
 ### 3️⃣ LLM은 ‘수치 계산기’가 아니라 ‘맥락 해석기’
-- 재무 수치를 계산하는 건 전통 ML/통계가 강하지만, “이익률 하락의 원인”이나 “사업 구조 변화의 해석”은 LLM이 더 뛰어나다.
+- 재무 수치를 계산하는 건 전통 ML/통계가 강하지만, “이익률 하락의 원인”이나 “사업 구조 변화의 해석”은 LLM이 더 뛰어날 수 있다.
 - 즉, ML은 예측 / LLM은 해석, 두 축의 역할 분리가 명확해진다.
 ### 4️⃣ 질문 이해력(Quality of Query)이 결과 품질을 결정한다
 - 같은 문서라도 “매출액 알려줘” vs “매출 성장률 추세 요약해줘”는 완전히 다른 검색/생성 경로를 탄다.
 - 질의의 **의도(Intent)·속성(Attribute)·단위(Period)**를 파악하는 질의 분류 모델이 필수적임을 깨달았다.
 ### 5️⃣ Adaptive Prompt가 사용자 신뢰도를 높인다
-- 초보자에겐 설명 위주, 전문가에겐 수치와 근거 중심으로 응답을 조정하면, 같은 LLM이라도 **“전문가처럼 느껴지는 맞춤형 리서치 어시스턴트”**가 된다.
+- 초보자에겐 설명 위주, 전문가에겐 수치와 근거 중심으로 응답을 조정하면, 같은 LLM이라도 **전문가처럼 느껴지는 맞춤형 리서치 어시스턴트**가 된다.
 ### 6️⃣ RAG + Domain Schema가 금융 분야 정확도의 핵심
 - 임베딩만으로는 ‘매출’과 ‘영업이익’ 구분이 불명확하므로, 메타데이터 스키마(회사명, 분기, 지표명) 필터링이 도메인 정확도를 결정짓는다.
  
@@ -381,5 +388,9 @@ flowchart TB
 - 김민주: 팀원들 간의 업무 분담과 소통이 원활하게 이루어져서  프로젝트가 훨씬 효율적으로 진행될 수 있었던 것 같아요. 모두가 잘 이끌어주신 덕분에 더 열심히 참여하고자 노력했고, 그래서 더 배워갈 수 있었습니다 !!!
 - 양진아 : 높은 데이터 품질이 좋은 결과를 만들어낸다. 데이터 정규화의 소중함. 그러나 너무나도 힘들고 귀찮다….또한 설계의 중요성을 느꼈다. 
 - 황혜진: GPU 자원의 중요성을 절실히 느꼈다. 작은 모델 하나 학습시키는 일도 CPU 환경에서는 버거웠고, 그 과정을 통해 연산 효율과 인프라 설계가 AI 개발의 핵심임을 깨달았다.
+
+# 하고 싶은 말
+- 맥북 에어가 옳다 (by JINA)
+<img width="400" alt="Macbook Air Win" src="assets/img/macbook_air_win.png" />
 
 
