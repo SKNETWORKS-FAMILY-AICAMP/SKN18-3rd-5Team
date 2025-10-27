@@ -2,6 +2,12 @@
 import time
 import streamlit as st
 
+LEVEL_NAME_TO_KEY = {
+    "파도 관찰자(초급)": "beginner",
+    "파도 타는 서퍼(중급)": "intermediate",
+    "시장 항해자(고급)": "advanced",
+}
+
 # ------------------------------
 # Question Bank (적응형 트리 구조)
 # ------------------------------
@@ -316,7 +322,16 @@ def _compute_final_level(question_results, correct_answers):
 
 
 def _reset_user_level_state():
-    for key in ['current_question_id', 'question_count', 'correct_answers', 'test_completed', 'question_path', 'question_results', 'user_level']:
+    for key in [
+        'current_question_id',
+        'question_count',
+        'correct_answers',
+        'test_completed',
+        'question_path',
+        'question_results',
+        'user_level',
+        'user_level_info',
+    ]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -477,7 +492,9 @@ def render_user_level():
             st.session_state.question_results,
             st.session_state.correct_answers,
         )
-        st.session_state.user_level = {
+        level_key = LEVEL_NAME_TO_KEY.get(final_level, "intermediate")
+        st.session_state.user_level = level_key
+        st.session_state.user_level_info = {
             "level": final_level,
             "icon": level_icon,
             "color": level_color,

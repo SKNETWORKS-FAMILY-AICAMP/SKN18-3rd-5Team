@@ -17,5 +17,6 @@ def run(state: QAState) -> QAState:
     """
     ans = state.get("draft_answer", "")
     state["grounded"] = ("[ref:" in ans)
+    print(f"[GroundingCheck] complete (grounded={state['grounded']})")
     
     return state

@@ -20,7 +20,7 @@ def build_system_prompt(level: str) -> str:
       "반드시 답변 끝에 [ref: report_id, date]를 포함하고 필요 시 URL도 제시하라.\n"
       "이 답변은 정보 제공 목적이며 투자 권유가 아니다.\n"
     )
-    return base + "\n" + PROMPT_TEMPLATES.get(level, PROMPT_TEMPLATES["intermediate"])
+    return base + "\n" + PROMPT_TEMPLATES.get(level, PROMPT_TEMPLATES["beginner"])
 
 def build_user_prompt(question: str, context: str, level: str) -> str:
     if level == "beginner":
@@ -30,3 +30,4 @@ def build_user_prompt(question: str, context: str, level: str) -> str:
     else:
         structure = "①핵심 요약 ②핵심 수치·포인트 ③근거"
     return f"질문: {question}\n\n[컨텍스트]\n{context}\n\n요구 형식: {structure}"
+

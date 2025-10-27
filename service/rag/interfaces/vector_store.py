@@ -24,6 +24,11 @@ class SearchResult:
     corp_name: Optional[str] = None
     document_name: Optional[str] = None
     doc_type: Optional[str] = None
+    rcept_dt: Optional[str] = None
+    report_id: Optional[str] = None
+    date: Optional[str] = None
+    title: Optional[str] = None
+    url: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
@@ -35,7 +40,12 @@ class SearchResult:
             'metadata': self.metadata,
             'corp_name': self.corp_name,
             'document_name': self.document_name,
-            'doc_type': self.doc_type
+            'doc_type': self.doc_type,
+            'rcept_dt': self.rcept_dt,
+            'report_id': self.report_id,
+            'date': self.date,
+            'title': self.title,
+            'url': self.url,
         }
 
 

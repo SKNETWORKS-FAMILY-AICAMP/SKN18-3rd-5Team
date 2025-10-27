@@ -1,6 +1,7 @@
 from graph.state import QAState
 from graph.utils.citations import normalize
 
+
 def run(state: QAState) -> QAState:
     """
     Answer 단계 함수.
@@ -15,5 +16,7 @@ def run(state: QAState) -> QAState:
     Returns:
         QAState: citations가 정규화된 상태 객체
     """
-    state["citations"] = normalize(state.get("citations", []))
+    citations = normalize(state.get("citations", []))
+    state["citations"] = citations
+    print(f"[Answer] complete (citations={len(citations)})")
     return state

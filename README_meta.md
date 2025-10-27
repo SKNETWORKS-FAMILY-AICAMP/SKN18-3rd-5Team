@@ -78,6 +78,7 @@ API (XML)
 - T : JSONL & XML -> 정규화 -> 자연어 문서화 (yaml / md) -> 로컬 저장 (docs/{corp}/{year}/{reprt_code}/{rcept_no}.md) -> 청크 (1차/2차 ) + 메타 동봉 -> .parquet 파일 생성
 - L : Parquet & MD -> text 임베딩 -> pgvector -> (키워드 인덱스 색인) -> 문서 CDN 업로드 보류 -> 서빙 (질의 및 응답)
 
+
 ### 3. ETL - FineTuning
 
 -
@@ -164,152 +165,10 @@ API (XML)
   eval_steps_per_second   =      1.061
 ```
 
-        output_dir: output/llama-3-8b-Instruct-bnb-4bit/qlora
-        #logging_steps: 10
-        #save_steps: 500
-        plot_loss: true
-        overwrite_output_dir: true
-
-        per_device_train_batch_size: 1
-        gradient_accumulation_steps: 4
-        learning_rate: 1.0e-4
-        num_train_epochs: 3.0
-        lr_scheduler_type: cosine
-        warmup_ratio: 0.1
-        bf16: true
-        #report_to: none
-
-        seed: 42
-        val_size: 0.1
-        per_device_eval_batch_size: 1
-        eval_strategy: steps
-        eval_steps: 100
-
-
-        do_eval: true
-        #eval_strategy: steps
-        #eval_steps: 100
-        save_strategy: steps
-        save_steps: 100
-        logging_steps: 20
-
-        load_best_model_at_end: true
-        metric_for_best_model: "eval_loss"
-        greater_is_better: false
-
-        report_to: ["tensorboard"]
-        resize_vocab: false
-        upcast_layernorm: true
-        ```
-
-7. 학습 시작
-
-   - CLI
-
-     ```bash
-     # 내 경로 확인 (/workspace/LLaMA-Factory/)
-     pwd
-
-     # (선택) 캐시 경로 고정해두면 재사용에 좋아요
-     export HF_HOME=/workspace/.cache/huggingface
-
-     # 학습 시작
-     llamafactory-cli train config/llama3-8b-instruct-bnb-4bit-unsloth.yaml
-     ```
-
-   - Config 추천 설정
-
-     ```yaml
-     #.yaml 파일
-     # 평가/저장/로깅 전략
-     do_eval: true
-     eval_strategy: steps # 또는 "epoch"
-     eval_steps: 100 # 데이터/스텝 규모에 맞게
-     save_strategy: steps
-     save_steps: 100
-     logging_steps: 20
-
-     # 베스트 모델 저장
-     load_best_model_at_end: true
-     metric_for_best_model: "eval_loss"
-     greater_is_better: false
-
-     # 로깅 백엔드(선택)
-     report_to: ["tensorboard"] # 또는 ["wandb"] 사용 시 WANDB_API_KEY 필요
-
-     # 토크나이저 경고 대응
-     resize_vocab: true
-
-     #(권장) 4bit 학습 안정화
-     upcast_layernorm: true
-     ```
-
-   - Output 확인
-     ```python
-     # 커맨드
-     ls -al {config에 지정한 ouput_dir}
-     # 예시
-     ls -al /output/llama-3-8b-Instruct-bnb-4bit/qlora
-     ```
-
-8. 추론
-
-   ```bash
-   # 인자 설정
-   llamafactory-cli chat \
-   --model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit" \
-   --adapter_name_or_path="output/llama-3-8b-Instruct-bnb-4bit/qlora" \
-   --template="llama3" \
-   --finetuning_type="lora" \
-   --quantization_bit=4 \
-   --temperature=0
-
-   # 테스트 후 히스토리 제거
-   clear
-
-   # 챗 종료
-   exit
-   ```
-
-9. 모델 저장
-
-   - 학습된 Lora adapter를 base 모델과 합쳐 저장
-   - 저장 파라미터
-     - model_name_or_path : base 모델을 지정, 학습 효율화를 위해 사용했던 양자화 모델이 아닌 원래 모델을 지정
-     - adapter_name_or_path: Lora adapter가 저장된 위치
-     - template : 모델의 형식
-     - finetuning_type: 파인튜닝 방법
-     - export_dir: 병합된 모델이 저장될 위치
-     - export_size: 모델의 큰 경우 분할될 크기 (GB)
-     - export_device: 모델 병합을 처리할 디바이스 지정 (cpu and cuda)
-     - export_hub_model_id : huggingface에 업로드 할 경우 아이디
-   - CLI
-
-     ```bash
-     # llama3 모델을 다운로드 해야하기 때문에 라이센스 동의
-     huggingface-cli login
-
-     # Lora Adapter를 병합
-     llamafactory-cli export \
-     --model_name_or_path="meta-llama/Meta-Llama-3-8B-Instruct" \
-     --adapter_name_or_path="output/llama-3-8b-Instruct-bnb-4bit/qlora" \
-     --template="llama3" \
-     --finetuning_type="lora" \
-     --export_dir="/output/Meta-Llama-3-8B-Instruct" \
-     --export_size=2 \
-     --export_device="cpu"
-
-     # 분할 저장 확인
-     ls -al output/Meta-Llama-3-8B-Instruct/
-     ```
-
-10. HuggingFace 모델 업로드
-    - 강의 자료 참고
-
 ---
 
 ## [랭그래프]
-
+- 참고 : ![[graph/readme.md]]
 - 전체 연동 개념도
   ```text
   [ Streamlit UI ]
@@ -325,4 +184,8 @@ API (XML)
       ↓
   [ 결과 + ref 반환 ]
   ```
-- 참고 : ![[graph/readme.md]]
+- ⚠️ **LangGraph 검색 파라미터 주의**  
+> 재작성된 질문은 그대로 `PgVectorStore`에 넘기기 때문에, 메타 정보를 덧붙일 때 문장이 너무 길어지거나 핵심 키워드가 뒤로 밀리면 유사도가 떨어질 수 있습니다.  
+> - 리트리버 구현: `service/rag/retrieval/retriever.py:82-134`  
+> - 기본 `top_k`·리랭킹 설정: `service/rag/rag_system.py:32-87`  
+> 재작성 로직을 수정할 때 이 두 파일의 파라미터와 함께 검토하세요.

@@ -21,6 +21,6 @@ render_page_title(PAGE_INFO["P1"], variant="compact")
 render_user_level_summary()
 
 #랭그레프 테스트 (chat_panel에 추가 예정)
-render_chat_lgrp_test()
+# render_chat_lgrp_test()
 
 render_chat_panel()
