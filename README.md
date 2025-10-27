@@ -1,4 +1,4 @@
-# 주제
+# 💵 공시 문서 및 애널리스트 분석 리포트 기반의 투자 Q&A 시스템
 
 임금-물가 상승률  
 <img width="900" height="750" alt="Image" src="https://github.com/user-attachments/assets/8e00c596-ba8f-4fec-abe7-67000845ca20" />
