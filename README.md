@@ -1,13 +1,13 @@
 # 주제
 
 임금-물가 상승률  
-<img width="2400" height="1600" alt="Image" src="https://github.com/user-attachments/assets/8e00c596-ba8f-4fec-abe7-67000845ca20" />
+<img width="850" height="600" alt="Image" src="https://github.com/user-attachments/assets/8e00c596-ba8f-4fec-abe7-67000845ca20" />
 
 임금/부동산/주식 상승률  
-<img width="2400" height="1600" alt="Image" src="https://github.com/user-attachments/assets/d86affbf-2b13-47df-b634-fc7a428e3845" />
+<img width="850" height="600" alt="Image" src="https://github.com/user-attachments/assets/d86affbf-2b13-47df-b634-fc7a428e3845" />
 
 적금/ 임금 상승 / 주식시장 상승률  
-<img width="2400" height="1600" alt="Image" src="https://github.com/user-attachments/assets/c5114601-c269-4a4d-8a40-9c47df222663" />
+<img width="850" height="600" alt="Image" src="https://github.com/user-attachments/assets/c5114601-c269-4a4d-8a40-9c47df222663" />
 
   2025년 현재 임금 상승률보다 물가 상승률이 더 가파른 상황에서 예적금만으로는 자산 증식이 어려운 상황입니다. 이에 따라 많은 사람들이 자산 증식을 위해 투자에 관심을 보이고 있습니다.
 
