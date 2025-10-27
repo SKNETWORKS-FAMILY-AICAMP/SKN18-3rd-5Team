@@ -168,15 +168,17 @@ flowchart TB
   %% ========= Start =========
   START["Start"] --> SRC["Raw Data (Docs/CSV/JSON/PDF)"]
 
-  %% ========= Off-RunPod: ETL & Embedding =========
+  %% ========= Off-RunPod: ETL & Embedding (HF e5) =========
   subgraph OFF["Off-RunPod (Local/Other Server)"]
     direction TB
     ETL["ETL / Preprocess / Chunk"]
-    EMB["Embedding Pipeline"]
+    E5["Hugging Face: multilingual-e5 (Embedding Model)"]
+    EMB["Embedding Pipeline (uses e5)"]
     PG_OFF["PostgreSQL w/ pgvector (OFF)"]
     DUMP["Vector DB Dump (.dump)"]
 
     SRC --> ETL --> EMB --> PG_OFF
+    E5 --> EMB
     PG_OFF -->| pg_dump | DUMP
   end
 
@@ -206,24 +208,38 @@ flowchart TB
   %% ========= Send train/test to RunPod =========
   DSET_OUT -->| upload | SEND_DATA["Send train/test to RunPod"]
 
-  %% ========= RunPod: Training & Deployment =========
-  subgraph RP_TRAIN["RunPod: Training & Deployment"]
+  %% ========= RunPod: Training & Upload to HF =========
+  subgraph RP_TRAIN["RunPod: Training & Upload"]
     direction TB
     LF["LLaMA-Factory (Train on RunPod)"]
-    ART["Model/Adapter Artifacts"]
-    OL["Ollama Runtime (RAG Inference)"]
+    ART["LoRA Adapter Artifacts"]
+    HF["Hugging Face Hub (Adapter Upload)"]
 
     SEND_DATA --> LF
     LF -->| train LoRA/QLoRA | ART
-    ART -->| deploy/load | OL
+    ART -->| push to Hub | HF
   end
 
-  %% ========= RAG Inference Flow =========
-  U["User (Browser)"] --> ST["Streamlit App (RunPod)"]
-  ST -->| Vector Search <br/>query embed | PG_ON
-  PG_ON -->| top-k chunks | ST
-  ST -->| prompt = instruction + context | OL
-  OL -->| generated answer | ST
+  %% ========= Application Runtime (uses HF models directly) =========
+  subgraph RP_APP["RunPod: Application Runtime"]
+    direction TB
+    ST["Streamlit App (RunPod)"]
+    MODEL_RT["Inference (Base + LoRA via HF Transformers/PEFT)"]
+
+    HF -->| download adapter & base | MODEL_RT
+    ST -->| Vector Search <br/>query embed | PG_ON
+    PG_ON -->| top-k chunks | ST
+    ST -->| prompt = instruction + context | MODEL_RT
+    MODEL_RT -->| generated answer | ST
+  end
+
+  %% ========= Optional: Ollama (temporary test only) =========
+  OLLAMA["Ollama Runtime (temp test)"]
+  PG_ON -. test vector search .-> OLLAMA
+  OLLAMA -. test answer .-> ST
+
+  %% ========= User Interaction =========
+  U["User (Browser)"] --> ST
   ST --> U
 
   %% ========= End =========
@@ -349,7 +365,7 @@ flowchart TB
   <img width="349" height="112" alt="Image" src="https://github.com/user-attachments/assets/37f57976-bb41-4b24-85cb-d6dd46718e80" />  
   <img width="846" height="702" alt="Image" src="https://github.com/user-attachments/assets/4131dd35-1cd2-4754-b7e0-467cd9e9f3ec" />  
 - **산출물** : https://huggingface.co/has0327/llama3.2-3b-ko-report-lora  
-- **참고** : 영화 자체(원본)를 배포하면 저작권 위반 -> 원본을 합치지 않고, adapter만 공개하면 합법적이고 안전
+- **참고** : 원본를 배포하면 저작권 위반 -> 원본을 합치지 않고, adapter만 공개하면 합법적이고 안전
 
 4. ## LangGraph
 - 핵심 원칙
@@ -357,9 +373,50 @@ flowchart TB
 	- 단일 책임 원칙: 각 노드는 한 가지 일만
 	- 명확한 데이터 흐름: 불필요한 의존성 금지
 	- 에러 전파 관리: 실패는 투명하게 처리
-- <img width="377" height="960" alt="Image" src="https://github.com/user-attachments/assets/ca602396-16a4-40c9-900d-f14f92cddb23" />  
-- <img width="410" height="697" alt="Image" src="https://github.com/user-attachments/assets/339f34d7-04fc-463a-8d54-e99d37446f37" />  
-- <img width="639" height="496" alt="Image" src="https://github.com/user-attachments/assets/c517d967-c4ca-4803-8fc9-d70e5735d1a0" />
+- 노드 플로우
+    ```mermaid
+    flowchart TD
+    %% === Styles ===
+    classDef oval fill:#e2e8f0,stroke:#94a3b8,color:#000;
+    classDef node fill:#f8fafc,stroke:#94a3b8,color:#000;
+
+    %% === Nodes ===
+    START([START])
+    Router["Router<br/>- set user_level<br/>- meta(top_k/rerank_n/max_ctx_tokens)"]
+    QueryRewrite["QueryRewrite<br/>- keyword/time/ticker enrich"]
+    Retrieve["Retrieve (pgvector)<br/>- top_k by level<br/>- optional date freshness"]
+    Rerank["Rerank (optional)<br/>- cross-encoder/bge reranker<br/>- pick n by level"]
+    ContextTrim["ContextTrim<br/>- dedup + token cut<br/>- collect citations"]
+    Generate["Generate (FT-LLM)<br/>- System: common + PROMPT_TEMPLATES[level]<br/>- User: question+context+structure<br/>- append [ref: report_id, date]"]
+    GroundingCheck["GroundingCheck<br/>- ref present?<br/>- numbers/dates consistent?<br/>- retry if insufficient"]
+    Guardrail["Guardrail<br/>- investment disclaimer<br/>- sensitive filter"]
+    Answer["Answer<br/>- normalize citations<br/>- return answer+meta"]
+    END([END])
+
+    %% === Flow ===
+    START --> Router --> QueryRewrite --> Retrieve --> Rerank --> ContextTrim --> Generate --> GroundingCheck --> Guardrail --> Answer --> END
+
+    %% === Retry Path ===
+    GroundingCheck -. "retry (≤1x)" .-> Retrieve
+
+    %% === Class Assignments ===
+    class START,END oval
+    class Router,QueryRewrite,Retrieve,Rerank,ContextTrim,Generate,GroundingCheck,Guardrail,Answer node
+    ```
+    | 노드                      | 설명                                      |
+    | ----------------------- | ------------------------------------------ |
+    | **START**               | 사용자의 질문과 투자 레벨 정보를 받아 파이프라인 시작       |
+    | **Router**              | 사용자 레벨에 따라 검색 개수, 컨텍스트 길이, 답변 깊이 설정 |
+    | **QueryRewrite**        | 질문을 분석해 시점·티커·키워드를 보강해 검색 효율 증가      |
+    | **Retrieve (pgvector)** | 리포트 데이터베이스에서 의미상 유사한 문단을 top-k로 검색   |
+    | **Rerank**              | 검색된 문단 중 질문과 가장 밀접한 내용을 상위로 재정렬      |
+    | **ContextTrim**         | 중복 문장을 제거하고, 최대 토큰 길이 내로 컨텍스트를 정리    |
+    | **Generate (FT-LLM)**   | 파인튜닝된 모델이 레벨별 프롬프트에 맞춰 답변을 생성        |
+    | **GroundingCheck**      | 답변이 실제 문서 근거와 일치하는지, ref가 포함됐는지 검증   |
+    | **Guardrail**           | 투자 권유나 민감 표현을 필터링하고 안내 문구를 자동 추가     |
+    | **Answer**              | 중복 인용을 정리하고 근거 문단과 함께 최종 답변을 반환      |
+    | **END**                 | 사용자에게 레벨별 맞춤형 근거 기반 답변이 전달          |
+
 
 # 인사이트
 ### 1️⃣ 정형 데이터와 비정형 텍스트의 경계 허물기
