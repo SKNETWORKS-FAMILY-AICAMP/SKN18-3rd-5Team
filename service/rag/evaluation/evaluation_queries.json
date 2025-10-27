@@ -71,5 +71,138 @@
     "expected_docs": ["하이브_사업보고서_2024", "하이브_분기보고서_2024Q1-Q4"],
     "requires_multi_doc": true,
     "difficulty": "hard"
+  },
+  {
+    "query_id": "Q008",
+    "query": "카카오의 2024년 4분기 총자산은?",
+    "query_type": "factual_numerical",
+    "company_name": "카카오",
+    "expected_keywords": ["총자산", "4분기", "2024"],
+    "expected_docs": ["카카오_분기보고서_2024Q4"],
+    "ground_truth_answer": "총자산 XX조원",
+    "difficulty": "easy"
+  },
+  {
+    "query_id": "Q009",
+    "query": "POSCO홀딩스의 주요 사업 부문과 제품은?",
+    "query_type": "factual_descriptive",
+    "company_name": "POSCO홀딩스",
+    "expected_keywords": ["사업부문", "제품", "철강", "2차전지"],
+    "expected_docs": ["POSCO홀딩스_사업보고서_2024"],
+    "ground_truth_sections": ["II. 사업의 내용"],
+    "difficulty": "easy"
+  },
+  {
+    "query_id": "Q010",
+    "query": "셀트리온의 2024년 연간 순이익은 얼마인가?",
+    "query_type": "factual_numerical",
+    "company_name": "셀트리온",
+    "expected_keywords": ["순이익", "당기순이익", "2024", "연간"],
+    "expected_docs": ["셀트리온_사업보고서_2024"],
+    "ground_truth_answer": "당기순이익 XX억원",
+    "difficulty": "easy"
+  },
+  {
+    "query_id": "Q011",
+    "query": "KB금융의 대표이사와 본점 소재지는?",
+    "query_type": "factual_basic",
+    "company_name": "KB금융",
+    "expected_keywords": ["대표이사", "본점", "소재지", "주소"],
+    "expected_docs": ["KB금융_사업보고서_2024"],
+    "ground_truth_sections": ["I. 회사의 개요"],
+    "difficulty": "easy"
+  },
+  {
+    "query_id": "Q012",
+    "query": "기아의 친환경차 판매 전략과 2024년 실적은?",
+    "query_type": "factual_contextual",
+    "company_name": "기아",
+    "expected_keywords": ["친환경차", "전기차", "판매", "전략", "실적"],
+    "expected_docs": ["기아_사업보고서_2024"],
+    "ground_truth_answer": "전략 설명 및 판매 XX만대",
+    "difficulty": "medium"
+  },
+  {
+    "query_id": "Q013",
+    "query": "한화에어로스페이스의 방산 부문 수주 잔고와 주요 계약 내역은?",
+    "query_type": "factual_detailed",
+    "company_name": "한화에어로스페이스",
+    "expected_keywords": ["수주잔고", "방산", "계약", "수출"],
+    "expected_docs": ["한화에어로스페이스_사업보고서_2024"],
+    "ground_truth_sections": ["II. 사업의 내용 - 수주 현황"],
+    "difficulty": "medium"
+  },
+  {
+    "query_id": "Q014",
+    "query": "SK텔레콤의 5G 가입자 수와 ARPU 변화는?",
+    "query_type": "trend_analysis",
+    "company_name": "SK텔레콤",
+    "expected_keywords": ["5G", "가입자", "ARPU", "변화", "증감"],
+    "expected_docs": ["SK텔레콤_사업보고서_2024", "SK텔레콤_분기보고서_2024Q1-Q4"],
+    "difficulty": "medium"
+  },
+  {
+    "query_id": "Q015",
+    "query": "삼성SDI의 ESG 경영 활동과 탄소중립 목표는?",
+    "query_type": "sustainability_analysis",
+    "company_name": "삼성SDI",
+    "expected_keywords": ["ESG", "탄소중립", "환경", "지속가능경영"],
+    "expected_docs": ["삼성SDI_사업보고서_2024", "삼성SDI_지속가능경영보고서_2024"],
+    "difficulty": "medium"
+  },
+  {
+    "query_id": "Q016",
+    "query": "현대중공업그룹 계열사들의 2024년 수주액을 비교하고 산업별 전망을 분석하시오",
+    "query_type": "cross_company_comparison",
+    "company_name": ["현대중공업", "현대미포조선", "현대건설기계"],
+    "expected_keywords": ["수주액", "조선", "건설기계", "비교", "전망"],
+    "expected_docs": [
+      "현대중공업_사업보고서_2024",
+      "현대미포조선_사업보고서_2024",
+      "현대건설기계_사업보고서_2024"
+    ],
+    "difficulty": "hard",
+    "requires_multi_doc": true,
+    "requires_calculation": true
+  },
+  {
+    "query_id": "Q017",
+    "query": "네이버와 카카오의 AI 기술 투자 현황을 비교하고 경쟁력을 평가하시오",
+    "query_type": "analytical_comparison",
+    "company_name": ["네이버", "카카오"],
+    "expected_keywords": ["AI", "인공지능", "투자", "R&D", "기술개발"],
+    "expected_docs": ["네이버_사업보고서_2024", "카카오_사업보고서_2024"],
+    "difficulty": "hard",
+    "requires_multi_doc": true
+  },
+  {
+    "query_id": "Q018",
+    "query": "LG화학의 배터리 소재 사업 경쟁력과 글로벌 시장점유율 변화를 분석하고 향후 전망을 제시하시오",
+    "query_type": "comprehensive_analysis",
+    "company_name": "LG화학",
+    "expected_keywords": ["배터리소재", "시장점유율", "경쟁력", "전망", "양극재", "음극재"],
+    "expected_docs": [
+      "LG화학_사업보고서_2024",
+      "LG화학_지속가능경영보고서_2024",
+      "LG화학_IR자료_2024"
+    ],
+    "difficulty": "hard",
+    "requires_multi_doc": true
+  },
+  {
+    "query_id": "Q019",
+    "query": "삼성전자와 SK하이닉스의 메모리 반도체 부문 영업이익률을 비교하고 차이 발생 원인을 설명하시오",
+    "query_type": "cross_company_comparison",
+    "company_name": ["삼성전자", "SK하이닉스"],
+    "expected_keywords": ["메모리", "반도체", "영업이익률", "DRAM", "NAND", "비교"],
+    "expected_docs": [
+      "삼성전자_사업보고서_2024",
+      "SK하이닉스_사업보고서_2024",
+      "삼성전자_분기보고서_2024Q1-Q4",
+      "SK하이닉스_분기보고서_2024Q1-Q4"
+    ],
+    "difficulty": "hard",
+    "requires_multi_doc": true,
+    "requires_calculation": true
   }
 ]
