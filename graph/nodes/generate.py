@@ -1,21 +1,62 @@
 from __future__ import annotations
 
+import re
+
 from graph.state import QAState
 from service.llm.llm_client import chat
 from service.llm.prompt_templates import build_system_prompt, build_user_prompt
 
 
+def _sanitize_context(context: str) -> str:
+    """시스템 지침을 제거하고 문서 내용만 추려낸다."""
+    if not context:
+        return ""
+
+    snippet = context
+    marker_pattern = re.compile(
+        r"(##\s*관련\s*문서|참고\s*문서들:|DOCUMENTS:|관련 정보를 찾았습니다:)",
+        flags=re.IGNORECASE,
+    )
+    match = marker_pattern.search(context)
+    if match:
+        snippet = context[match.end():]
+    else:
+        user_prompt_pattern = re.compile(r"(사용자 질문:|질문:)", flags=re.IGNORECASE)
+        match_user = user_prompt_pattern.search(context)
+        if match_user:
+            snippet = context[match_user.end():]
+
+    snippet = re.sub(r"당신은 도움이 되는.+?답변해주세요\.", " ", snippet, flags=re.DOTALL)
+    snippet = re.sub(r"(사용자 질문:|질문:).+?(?=(\[문서|\bDOCUMENT|\Z))", " ", snippet, flags=re.DOTALL | re.IGNORECASE)
+    snippet = re.sub(r"\s+", " ", snippet).strip()
+
+    if not snippet:
+        return ""
+
+    sentences = re.split(r"(?<=\.)\s+|\n", snippet)
+    cleaned_sentences = []
+    for sent in sentences:
+        text = sent.strip()
+        if not text:
+            continue
+        cleaned_sentences.append(text)
+        if len(cleaned_sentences) >= 3:
+            break
+    return " ".join(cleaned_sentences)
+
+
 def _fallback_answer(question: str, context: str) -> str:
-    """LLM이 비어 있는 답을 돌려줄 때 최소한의 요약 문구를 생성."""
-    if context:
-        snippet = context.strip().splitlines()
-        preview = " ".join(line.strip() for line in snippet if line.strip())[:300]
-        if preview:
-            return (
-                "죄송합니다. 모델이 답변을 생성하지 못했습니다. "
-                "다음 컨텍스트를 참고해 수동으로 확인해 주세요:\n"
-                f"{preview}"
-            )
+    """LLM이 비어 있는 답을 돌려줄 때 최소한의 안내 문구를 생성."""
+    snippet = _sanitize_context(context)
+    if snippet:
+        preview = snippet[:600].strip()
+        return (
+            "죄송합니다. 모델이 답변을 생성하지 못했습니다. "
+            "다음 참고 내용을 확인해 주세요:\n\n"
+            "```markdown\n"
+            f"{preview}\n"
+            "```"
+        )
     return (
         "죄송합니다. 현재 질문에 대한 답변을 생성하지 못했습니다. "
         "잠시 후 다시 시도해 주세요."

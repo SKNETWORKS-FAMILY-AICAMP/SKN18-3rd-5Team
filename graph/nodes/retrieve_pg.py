@@ -52,6 +52,9 @@ def run(state: QAState) -> QAState:
             url = result.get("url") or metadata.get("url", "")
             title = result.get("title") or metadata.get("title", "")
             chunk_id = result.get("chunk_id") or metadata.get("chunk_id", "")
+            corp_name = result.get("corp_name") or metadata.get("corp_name", "")
+            document_name = result.get("document_name") or metadata.get("document_name", "")
+            rcept_dt = result.get("rcept_dt") or metadata.get("rcept_dt", "")
             formatted_results.append(
                 {
                     "chunk_text": result.get("content", ""),
@@ -60,6 +63,9 @@ def run(state: QAState) -> QAState:
                     "url": url or "",
                     "title": title or "",
                     "chunk_id": chunk_id or "",
+                    "corp_name": corp_name or "",
+                    "document_name": document_name or "",
+                    "rcept_dt": rcept_dt or "",
                     "similarity": result.get("similarity", 0.0),
                     "metadata": metadata,
                 }

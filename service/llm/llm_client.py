@@ -156,15 +156,16 @@ def chat(system: str, user: str, max_tokens: int = 512) -> str:
     gen_out = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
-        max_new_tokens=min(max_tokens, 128),  # ← 128로 캡
-        min_new_tokens=16,
+        max_new_tokens=max_tokens,
         do_sample=True,
+        # temperature=0.3,
+        # top_p=0.3,
         temperature=0.7,
         top_p=0.9,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
-        # use_cache=False,                      # ← KV-cache OFF (메모리 급감)
-        use_cache=True,                      # GPU에서는 KV-cache ON
+        # .env의 IS_RUNPOD 값에 따라 KV-cache 사용 여부 결정
+        use_cache = True if os.environ.get("IS_RUNPOD", "False").lower() == "true" else False,
     )
     output_ids = gen_out[0][input_ids.shape[-1]:]
     text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()

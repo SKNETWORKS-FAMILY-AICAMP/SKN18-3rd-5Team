@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 import streamlit as st
 from datetime import datetime
 from service.chat_service import ChatService
@@ -66,14 +67,33 @@ def change_chat_theme() -> None:
 
 
 
-# 예상 질문 목록
-SUGGESTED_QUESTIONS = [
-    "🏦 삼성전자의 2024년 3분기 매출액과 영업이익 알려줘",
-    "📈 SK하이닉스의 최근 자기주식 취득 결정 배경과 취득 규모 알려줘",
-    "💰 하이브의 아티스트별 매출 기여도와 해외 매출 비중 변화 추이 알려줘",
-    "📉 LG에너지솔루션의 주요 리스크 요인은 뭐야?",
-    "⚡ 현대자동차의 전기차 사업 투자 계획과 2025년 목표 판매량을 비교 분석해줘."
-]
+# 예상 질문 목록 (레벨별)
+SUGGESTED_QUESTIONS = {
+    "beginner": [
+        "📺 제일기획이 2025년 1분기에 올린 연결 영업수익이 얼마인지 숫자만 쉽게 알려줘.",
+        "💼 유화증권이 2024년에 영업으로 번 돈(영업수익)과 남은 순이익이 각각 얼마인지 쉬운 말로 설명해줘.",
+        "💉 녹십자가 2024년 보고서에서 혈액제제가 매출에서 차지한 비중이 몇 퍼센트인지 알려줘.",
+        "🏠 벽산이 2024년에 기록한 매출액이 얼마였고 전년도와 비교해 얼마나 달랐는지 간단히 말해줘.",
+    ],
+    "intermediate": [
+        "🔋 금양 2024년 자료에서 발포제 부문 총매출액과 이차전지 부문 영업손익이 각각 얼마인지 비교해줘.",
+        "⚙️ 두산에너빌리티가 2024년에 체결한 Taiba & Qassim 신규 수주 계약금액이 얼마인지 알려줘.",
+        "📱 삼성전자가 2025년 1분기에 DX 부문과 DS 부문에서 각각 얼마나 영업이익을 냈는지 비교해줘.",
+        "🚗 삼성화재가 2025년 1분기에 보고한 일반보험·자동차보험·장기보험 보험수익이 각각 얼마인지 정리해줘.",
+    ],
+    "advanced": [
+        "🏗️ 삼성물산의 2024년 전체 매출액과 각 사업부 매출 비중을 활용해서 건설부문과 상사부문의 매출 금액을 계산하고 두 부문 비중 차이도 구해줘.",
+        "🛠️ 두산밥캣이 2024년에 공시한 제품별 매출에서 Compact Equipment와 Material Handling 매출액, 그리고 비중 차이가 몇 %포인트인지 계산해줘.",
+        "💰 삼성생명이 2024년 말 기준으로 밝힌 총자산 249조 3,252억원과 운용자산 243조 2,992억원을 이용해 자산운용률 97.58%가 맞는지 검산해줘.",
+        "🛳️ 삼성중공업이 공시에서 언급한 2024년 2월 LNG선 15척 수주(4조6천억원)와 2024년 11월 컨테이너선 4척 수주(1조원)를 합산하면 총 수주 규모가 얼마인지 정리해줘.",
+    ],
+}
+
+LEVEL_LABEL = {
+    "beginner": "초급",
+    "intermediate": "중급",
+    "advanced": "고급",
+}
 
 
 # 채팅 서비스 초기화
@@ -119,16 +139,40 @@ def render_chat_panel() -> None:
 
 def _render_suggested_questions() -> None:
     """예상 질문 버튼들을 렌더링"""
-    st.markdown("### 💡 자주 묻는 질문들")
+    level_raw = st.session_state.get("user_level") or "beginner"
+    level = str(level_raw).lower()
+    if level not in SUGGESTED_QUESTIONS:
+        level = "beginner"
+
+    display_level = LEVEL_LABEL.get(level, LEVEL_LABEL["beginner"])
+
+    st.markdown(f"### 💡 추천 질문 ({display_level})")
     st.markdown("궁금한 내용을 클릭해보세요!")
+    st.markdown(
+        """
+        <style>
+        .suggested-wrap div[data-testid="column"] div.stButton > button {
+            height: 72px !important;
+            min-height: 72px !important;
+            max-height: 72px !important;
+            white-space: normal !important;
+            line-height: 1.2 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     
     # 2열로 버튼 배치
+    st.markdown('<div class="suggested-wrap">', unsafe_allow_html=True)
     cols = st.columns(2)
-    for i, question in enumerate(SUGGESTED_QUESTIONS):
+    questions = SUGGESTED_QUESTIONS[level]
+    for i, question in enumerate(questions):
         col = cols[i % 2]
         with col:
-            if st.button(question, key=f"suggested_{i}"):
+            if st.button(question, key=f"suggested_{level}_{i}", use_container_width=True):
                 _handle_user_input(question)
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
 
@@ -223,7 +267,8 @@ def _handle_user_input(user_input: str) -> None:
     try:
         app = _get_langgraph_app()
         user_level = st.session_state.get("user_level", "intermediate")
-        lg_state = app.invoke({"question": user_input, "user_level": user_level})
+        with st.spinner("답변을 준비하고 있습니다..."):
+            lg_state = app.invoke({"question": user_input, "user_level": user_level})
         assistant_reply = _format_langgraph_response(lg_state)
         st.session_state["latest_langgraph_state"] = lg_state
         print(f"[Chat] assistant_reply={assistant_reply[:200]!r}")
@@ -301,7 +346,6 @@ def _get_langgraph_app():
         st.session_state.langgraph_app = build_app()
     return st.session_state.langgraph_app
 
-
 def _format_langgraph_response(state: dict) -> str:
     answer = state.get("draft_answer", "").strip()
     if not answer:
@@ -310,9 +354,11 @@ def _format_langgraph_response(state: dict) -> str:
     if citations:
         lines = ["\n\n📚 참고 자료"]
         for item in citations:
-            title = item.get("title", "출처 미상")
-            date = item.get("date", "날짜 미상")
-            report_id = item.get("report_id", "ref")
+            corp_name = item.get("corp_name") or ""
+            document_name = item.get("document_name") or ""
+            title = item.get("title") or document_name or corp_name or "출처 미상"
+            date = item.get("date") or item.get("rcept_dt") or "날짜 미상"
+            report_id = item.get("report_id") or corp_name or item.get("chunk_id") or "ref"
             url = item.get("url", "")
             line = f"- {title} ({date}) [{report_id}]"
             if url:
